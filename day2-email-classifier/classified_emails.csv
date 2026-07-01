@@ -1,0 +1,6 @@
+subject,sender,body,timestamp,category,urgency,summary
+Charged twice,ramesh@gmail.com,I was charged twice for my appointment last week please help,2026-06-27 09:00,billing,high,Customer charged incorrectly for appointment
+Reschedule appointment,priya@gmail.com,Can I reschedule my 3pm appointment to tomorrow?,2026-06-27 09:30,general,high,Request to reschedule an existing appointment
+Severe tooth pain,kumar@gmail.com,I have severe tooth pain since last night it is unbearable,2026-06-27 10:00,complaint,high,Person experiencing severe tooth pain and seeking help
+Working hours,anita@gmail.com,What are your clinic working hours on weekends?,2026-06-27 10:30,general,low,Query about clinic working hours on weekends
+Rude staff,vijay@gmail.com,Your receptionist was extremely rude to me today I want to complain,2026-06-27 11:00,complaint,high,Customer complaint about rude staff interaction
