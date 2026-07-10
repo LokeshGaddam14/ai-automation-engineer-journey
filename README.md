@@ -16,6 +16,11 @@ A hands-on journey building production-grade AI automation skills. This reposito
 - **Day 8** — **Unified Agent**: Unified intent classification, tool calling, conversational memory, and in-memory RAG loading into a single chatbot pipeline.
 - **Day 9** — **LangGraph Migration**: Refactored the unified agent into a stateful, predictable LangGraph state machine.
 - **Day 10** — **FastAPI Integration**: Wrapped the LangGraph agent in a FastAPI web service, exposing `/chat` and `/health` endpoints for external API integrations.
+- **Day 11** — **Bolna AI Voice Integration**: Connected Aria to Bolna AI as a Custom LLM via ngrok tunnel. Aria now responds to real voice calls using the `/v1/chat/completions` endpoint.
+- **Day 12** — **Phone Numbers & Real Calls**: Purchased Indian DID (+91), configured SIP trunks in Bolna, made first real patient call end-to-end.
+- **Day 13** — **Webhook Automation (n8n)**: Built full post-call automation pipeline. Bolna fires a webhook → n8n parses Telugu/multilingual payload → logs to Google Sheets → sends branded Gmail to dentist + patient.
+- **Day 14** — **Memory Architecture**: Implemented dual-layer persistence — Redis (Upstash) for real-time call session state + SQLite/Postgres for durable archival. Unified call handler bridges Bolna → Redis → Postgres lifecycle.
+- **Day 15** — **Integrations & Multi-Agent**: Google Calendar for availability checks + auto-booking. LangGraph multi-agent orchestrator routing calls through Greeting → Booking/Info/Emergency → Escalation agents in Telugu/Hindi/English.
 
 ---
 
@@ -23,22 +28,38 @@ A hands-on journey building production-grade AI automation skills. This reposito
 
 ```mermaid
 graph TD
-    User([User Message]) --> Classifier[Classifier Node]
-    Classifier --> Route{Route based on Intent}
-    Route -- booking --> ToolAgent[Tool Agent Node]
-    Route -- pricing/general/emergency --> RAG[RAG Node]
-    ToolAgent --> End([Final Response])
-    RAG --> End
+    Patient([Patient Calls]) --> Bolna[Bolna AI Voice Agent]
+    Bolna --> Aria[Aria - LangGraph Agents]
+    Aria --> Greeting[Greeting Agent]
+    Greeting --> Route{Route Intent}
+    Route -- booking --> Booking[Booking Agent]
+    Route -- info --> Info[Info/FAQ Agent]
+    Route -- emergency --> Emergency[Emergency Triage]
+    Route -- escalation --> Human[Human Escalation]
+    Booking --> Calendar[Google Calendar]
+    Booking --> Confirm[Confirm + Booking ID]
+    Confirm --> Webhook[Bolna Webhook]
+    Webhook --> n8n[n8n Automation]
+    n8n --> Sheets[Google Sheets]
+    n8n --> Gmail[Gmail - Patient + Dentist]
+    n8n --> Redis[Redis Session]
+    Redis --> Postgres[Postgres Archive]
 ```
 
 ---
 
 ## 🛠️ Tech Stack
-- **Framework**: LangChain, LangGraph
-- **API Framework**: FastAPI, Uvicorn
+- **Voice AI**: Bolna AI (multilingual — Telugu, Hindi, English, Tamil)
+- **Orchestration**: LangGraph state machine (multi-agent routing)
+- **Framework**: LangChain, FastAPI, Uvicorn
 - **LLM**: Groq (llama-3.3-70b-versatile)
-- **Vector Store**: ChromaDB (In-Memory)
+- **Vector Store**: ChromaDB (In-Memory RAG)
 - **Embeddings**: HuggingFace (`sentence-transformers/all-MiniLM-L6-v2`)
+- **Automation**: n8n Cloud (webhook → Sheets → Gmail pipeline)
+- **Session Memory**: Upstash Redis (real-time call state)
+- **Persistent Storage**: SQLite / Supabase Postgres (call archive)
+- **Calendar**: Google Calendar API
+- **Notifications**: Gmail API (HTML email templates)
 - **Language**: Python
 
 ---

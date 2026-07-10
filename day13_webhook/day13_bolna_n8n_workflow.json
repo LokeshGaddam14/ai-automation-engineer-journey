@@ -1,0 +1,461 @@
+{
+  "name": "Dental Clinic - Bolna Voice Automation (Day 13)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bolna-dental-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Bolna Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [528, 1088],
+      "webhookId": "bolna-dental-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Is Call Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 1088]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'received', call_status: $json.body.call_status }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Acknowledge Other Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1040, 1280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'logged', execution_id: $json.body.id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Acknowledge Bolna Call End",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1040, 992]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// BOLNA PAYLOAD PARSER v2 — matches actual Bolna webhook structure\n// Bolna sends: id, agent_id, status, transcript, extracted_data,\n//   conversation_duration, telephony_data, usage_breakdown, created_at\n// ---------------------------------------------------------------------------\n\nconst body = $input.item.json.body || {};\n\n// ── Core call metadata ────────────────────────────────────────────────────\nconst executionId    = body.id || body.execution_id || 'unknown';\nconst agentId        = body.agent_id || '';\nconst callStatus     = body.status || body.call_status || 'unknown';\nconst duration       = body.conversation_duration || body.conversation_time || 0;\nconst transcript     = (body.transcript || '').toString();\nconst createdAt      = body.created_at || new Date().toISOString();\n\n// ── Phone number from telephony_data ─────────────────────────────────────\nconst telephony   = body.telephony_data || {};\nconst phoneNumber = telephony.to_number || telephony.from_number\n                 || body.to_number || body.from_number || '';\n\n// ── Language auto-detection ───────────────────────────────────────────────\nconst usage    = body.usage_breakdown || {};\nconst langCode = usage.transcriber_language || 'en';\nconst langMap  = {\n  'te': 'Telugu',  'hi': 'Hindi',   'en': 'English', 'ta': 'Tamil',\n  'kn': 'Kannada', 'ml': 'Malayalam','mr': 'Marathi', 'bn': 'Bengali',\n  'gu': 'Gujarati','pa': 'Punjabi', 'or': 'Odia',    'ur': 'Urdu'\n};\nconst language = langMap[langCode] || langCode;\n\n// ── Bolna extracted_data parser ───────────────────────────────────────────\n// Structure: extracted_data[categoryKey][fieldKey].subjective\nconst extractedData = body.extracted_data || {};\n\n// Helper: get the subjective value from a category\nconst getField = (key) => {\n  const cat = extractedData[key] || {};\n  const field = cat[key] || {};\n  const val = field.subjective || field.objective || '';\n  // Only return if confidence > 0.3\n  const conf = field.confidence !== undefined ? field.confidence : 1;\n  return conf > 0.3 ? val : '';\n};\n\n// Get English call summary (works even for Telugu/Hindi calls!)\nconst generalCat   = extractedData.General || extractedData.general || {};\nconst callSumObj   = generalCat['Call Summary'] || generalCat['call_summary'] || {};\nconst summary      = callSumObj.subjective || body.summary || '';\n\nlet patientName    = getField('patient_name');\nlet appointmentDate= getField('appointment_date');\nlet appointmentTime= getField('appointment_time');\nlet treatment      = getField('treatment');\nlet patientEmail   = getField('email');\nlet bookingId      = getField('booking_id');\n\n// ── Booking detection (check English summary — works for all languages!) ──\nconst bookingKeywords = [\n  'confirmed', 'appointment', 'booked', 'booking id', 'scheduled',\n  'confirmation', 'appointment confirmed', 'book an appointment'\n];\nconst combinedText = (summary + ' ' + transcript).toLowerCase();\nconst hasBookingSignal = bookingKeywords.some(kw => combinedText.includes(kw));\n\n// Auto-generate booking ID if booking detected but none provided\nif (hasBookingSignal && !bookingId) {\n  bookingId = 'BLN' + Date.now().toString().slice(-7);\n}\n\nconst loggedAt = new Date().toISOString();\n\nreturn {\n  json: {\n    // Call metadata\n    executionId,\n    agentId,\n    callStatus,\n    phoneNumber,\n    durationSeconds: duration,\n    createdAt,\n    loggedAt,\n\n    // Content\n    transcript: transcript.slice(0, 4000),\n    summary,\n    language,\n\n    // Booking info\n    hasBooking: hasBookingSignal,\n    bookingId,\n    patientName:     patientName || 'Unknown Patient',\n    patientPhone:    phoneNumber,\n    patientEmail,\n    appointmentDate,\n    appointmentTime,\n    treatment:       treatment || 'General Consultation',\n\n    // Clinic info\n    dentistEmail:    'lokeshgaddam2514@gmail.com',\n    clinicName:      'Naveen Advanced Dental Clinic',\n    clinicPhone:     '+91-XXXXXXXXXX',\n    bookedOn:        loggedAt\n  }\n};"
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Parse Bolna Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 992]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1czNxOhrZ4u_noUZR9wkdtPOxZKs4WGIPU3to5ORjza4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CallLogs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Call ID":        "={{ $json.executionId }}",
+            "Phone Number":   "={{ $json.phoneNumber }}",
+            "Call Status":    "={{ $json.callStatus }}",
+            "Duration (sec)": "={{ $json.durationSeconds }}",
+            "Summary":        "={{ $json.summary }}",
+            "Transcript":     "={{ $json.transcript }}",
+            "Has Booking":    "={{ $json.hasBooking ? 'YES' : 'NO' }}",
+            "Logged At":      "={{ $json.loggedAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToAutoMatch": false
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Log Call to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1520, 1120],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oUoJktYHIQuz1mfy",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-booking-check",
+              "leftValue": "={{ $json.hasBooking ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Has Booking?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1760, 992]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1czNxOhrZ4u_noUZR9wkdtPOxZKs4WGIPU3to5ORjza4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Appointments",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Booking ID":        "={{ $json.bookingId }}",
+            "Patient Name":      "={{ $json.patientName }}",
+            "Phone":             "={{ $json.patientPhone }}",
+            "Email":             "={{ $json.patientEmail }}",
+            "Appointment Date":  "={{ $json.appointmentDate }}",
+            "Appointment Time":  "={{ $json.appointmentTime }}",
+            "Treatment":         "={{ $json.treatment }}",
+            "Preferred Language":"={{ $json.language }}",
+            "Status":            "Confirmed",
+            "Call ID":           "={{ $json.executionId }}",
+            "Booked On":         "={{ $json.bookedOn }}",
+            "Summary":           "={{ $json.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToAutoMatch": false
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "Log Booking to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2000, 832],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "oUoJktYHIQuz1mfy",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-email-check",
+              "leftValue": "={{ $('Parse Bolna Payload').item.json.patientEmail }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "Has Patient Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2240, 720]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Parse Bolna Payload').item.json.patientEmail }}",
+        "subject": "=✅ Appointment Confirmed | {{ $('Parse Bolna Payload').item.json.bookingId }} — {{ $('Parse Bolna Payload').item.json.clinicName }}",
+        "message": "=<html><body style='margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f4f4;'><table width='100%' cellpadding='0' cellspacing='0' style='padding:24px;'><tr><td><table width='600' align='center' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1);'><tr><td style='background:linear-gradient(135deg,#1565C0,#42A5F5);padding:32px;text-align:center;'><h1 style='color:#fff;margin:0;font-size:26px;'>🦷 {{ $('Parse Bolna Payload').item.json.clinicName }}</h1><p style='color:#bbdefb;margin:8px 0 0;'>Appointment Confirmation</p></td></tr><tr><td style='padding:36px;'><h2 style='color:#1565C0;margin-top:0;'>Namaskaram, {{ $('Parse Bolna Payload').item.json.patientName }}! 🙏</h2><p style='color:#555;font-size:15px;'>Your dental appointment is <strong style='color:#2E7D32;'>confirmed!</strong></p><table width='100%' style='background:#E3F2FD;border-radius:8px;padding:20px;margin:20px 0;border-collapse:separate;'><tr><td style='padding:7px 0;color:#555;width:45%;'><strong>📋 Booking ID</strong></td><td style='color:#1565C0;font-weight:bold;'>{{ $('Parse Bolna Payload').item.json.bookingId }}</td></tr><tr><td style='padding:7px 0;color:#555;'><strong>📅 Date</strong></td><td>{{ $('Parse Bolna Payload').item.json.appointmentDate || 'To be confirmed' }}</td></tr><tr><td style='padding:7px 0;color:#555;'><strong>⏰ Time</strong></td><td>{{ $('Parse Bolna Payload').item.json.appointmentTime || 'To be confirmed' }}</td></tr><tr><td style='padding:7px 0;color:#555;'><strong>🦷 Treatment</strong></td><td>{{ $('Parse Bolna Payload').item.json.treatment }}</td></tr></table><div style='background:#FFF3E0;border-left:4px solid #FF9800;padding:16px;border-radius:0 8px 8px 0;margin-bottom:20px;'><p style='margin:0 0 8px;color:#E65100;font-weight:bold;'>⚠️ Reminders</p><ul style='color:#555;margin:0;padding-left:18px;'><li>Please arrive 10 minutes before your appointment</li><li>Carry a valid ID proof</li><li>Inform us of any ongoing medications</li></ul></div><p style='color:#555;'>Need to reschedule? Call us at <strong>{{ $('Parse Bolna Payload').item.json.clinicPhone }}</strong></p></td></tr><tr><td style='background:#1565C0;padding:18px;text-align:center;'><p style='color:#bbdefb;margin:0;font-size:12px;'>Automated confirmation via Aria — {{ $('Parse Bolna Payload').item.json.clinicName }}</p></td></tr></table></td></tr></table></body></html>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "Send Gmail to Patient",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2480, 640],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ylFJuISHxlQk35cl",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "=lokeshgaddam2514@gmail.com",
+        "subject": "=🦷 NEW BOOKING | {{ $('Parse Bolna Payload').item.json.bookingId }} | {{ $('Parse Bolna Payload').item.json.patientName }} | {{ $('Parse Bolna Payload').item.json.appointmentDate }} {{ $('Parse Bolna Payload').item.json.appointmentTime }}",
+        "message": "=<html><body style='margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f4f4;'><table width='100%' cellpadding='0' cellspacing='0' style='padding:24px;'><tr><td><table width='600' align='center' cellpadding='0' cellspacing='0' style='background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1);'><tr><td style='background:linear-gradient(135deg,#2E7D32,#66BB6A);padding:28px;text-align:center;'><h1 style='color:#fff;margin:0;font-size:22px;'>🦷 New Appointment Alert</h1><p style='color:#C8E6C9;margin:6px 0 0;'>Booked via Aria Voice Agent (Bolna AI)</p></td></tr><tr><td style='padding:32px;'><table width='100%' style='background:#F1F8E9;border-radius:8px;padding:20px;margin-bottom:20px;border-collapse:separate;'><tr><td colspan='2' style='padding-bottom:12px;'><strong style='color:#2E7D32;font-size:16px;'>Patient Details</strong></td></tr><tr><td style='padding:6px 0;color:#666;width:40%;'>📋 Booking ID</td><td style='color:#1565C0;font-weight:bold;'>{{ $('Parse Bolna Payload').item.json.bookingId }}</td></tr><tr><td style='padding:6px 0;color:#666;'>👤 Name</td><td><strong>{{ $('Parse Bolna Payload').item.json.patientName }}</strong></td></tr><tr><td style='padding:6px 0;color:#666;'>📱 Phone</td><td>{{ $('Parse Bolna Payload').item.json.patientPhone }}</td></tr><tr><td style='padding:6px 0;color:#666;'>📧 Email</td><td>{{ $('Parse Bolna Payload').item.json.patientEmail || 'Not provided' }}</td></tr><tr><td colspan='2' style='padding:14px 0 8px;'><strong style='color:#2E7D32;font-size:16px;'>Appointment Details</strong></td></tr><tr><td style='padding:6px 0;color:#666;'>📅 Date</td><td><strong>{{ $('Parse Bolna Payload').item.json.appointmentDate || 'See summary' }}</strong></td></tr><tr><td style='padding:6px 0;color:#666;'>⏰ Time</td><td><strong>{{ $('Parse Bolna Payload').item.json.appointmentTime || 'See summary' }}</strong></td></tr><tr><td style='padding:6px 0;color:#666;'>🦷 Treatment</td><td>{{ $('Parse Bolna Payload').item.json.treatment }}</td></tr><tr><td style='padding:6px 0;color:#666;'>⏱️ Call Duration</td><td>{{ $('Parse Bolna Payload').item.json.durationSeconds }}s</td></tr></table><div style='background:#f5f5f5;border-radius:8px;padding:16px;'><strong style='color:#555;'>Call Summary:</strong><p style='color:#333;margin-top:8px;'>{{ $('Parse Bolna Payload').item.json.summary }}</p></div></td></tr><tr><td style='background:#2E7D32;padding:16px;text-align:center;'><p style='color:#C8E6C9;margin:0;font-size:12px;'>Auto-generated — Aria Voice Automation (Bolna AI) | Execution: {{ $('Parse Bolna Payload').item.json.executionId }}</p></td></tr></table></td></tr></table></body></html>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a1b2c3d4-0011-0011-0011-000000000011",
+      "name": "Send Gmail to Dentist",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2240, 960],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ylFJuISHxlQk35cl",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/YOUR_WHATSAPP_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0012-0012-0012-000000000012",
+      "name": "WhatsApp to Dentist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2480, 1024],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SRaEQBzIoqX4Jl3V",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/YOUR_WHATSAPP_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0013-0013-0013-000000000013",
+      "name": "WhatsApp to Patient",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2480, 1136],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SRaEQBzIoqX4Jl3V",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Bolna Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Call Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Call Completed?": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Bolna Call End",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Parse Bolna Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acknowledge Other Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Bolna Payload": {
+      "main": [
+        [
+          {
+            "node": "Log Call to Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Booking?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Booking?": {
+      "main": [
+        [
+          {
+            "node": "Log Booking to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Booking to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Has Patient Email?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Gmail to Dentist",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp to Dentist",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp to Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Patient Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Gmail to Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e2d9a9dfb3c7048304f291c8d8707edfa42716046b08f66f69c034f772c1a730"
+  },
+  "tags": []
+}
