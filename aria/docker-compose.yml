@@ -1,0 +1,100 @@
+# ── Aria Voice Receptionist — Docker Compose ──────────────────────────────────
+# Full production stack: Redis + Postgres + FastAPI
+#
+# Start: docker-compose up -d
+# Logs:  docker-compose logs -f aria-api
+# Stop:  docker-compose down
+
+version: "3.9"
+
+services:
+
+  # ── Redis (session state) ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aria-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # ── PostgreSQL (durable storage) ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: aria-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-aria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ariapass123}
+      POSTGRES_DB:       ${POSTGRES_DB:-aria_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aria} -d ${POSTGRES_DB:-aria_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI (Aria API) ────────────────────────────────────────────────────────
+  aria-api:
+    build:
+      context: ..
+      dockerfile: aria/Dockerfile
+    container_name: aria-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Override with Docker Redis + Postgres
+      REDIS_URL:    redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aria}:${POSTGRES_PASSWORD:-ariapass123}@postgres:5432/${POSTGRES_DB:-aria_db}
+
+      # Pass through all .env variables
+      OPENAI_API_KEY:              ${OPENAI_API_KEY:-}
+      GROQ_API_KEY:                ${GROQ_API_KEY:-}
+      BOLNA_API_KEY:               ${BOLNA_API_KEY:-}
+      TWILIO_ACCOUNT_SID:          ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN:           ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER:         ${TWILIO_PHONE_NUMBER:-}
+      GOOGLE_CALENDAR_ID:          ${GOOGLE_CALENDAR_ID:-primary}
+      CLINIC_TIMEZONE:             ${CLINIC_TIMEZONE:-Asia/Kolkata}
+      UPSTASH_REDIS_REST_URL:      ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN:    ${UPSTASH_REDIS_REST_TOKEN:-}
+      CLINIC_NAME:                 ${CLINIC_NAME:-Naveen Advanced Dental Clinic}
+      CLINIC_PHONE:                ${CLINIC_PHONE:-+91-XXXXXXXXXX}
+      CLINIC_ADDRESS:              ${CLINIC_ADDRESS:-Hyderabad, Telangana}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./integrations/token.json:/app/aria/integrations/token.json:ro
+      - ./integrations/credentials.json:/app/aria/integrations/credentials.json:ro
+
+# ── Persistent Volumes ────────────────────────────────────────────────────────
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+
+# ── Network ───────────────────────────────────────────────────────────────────
+networks:
+  default:
+    name: aria-network

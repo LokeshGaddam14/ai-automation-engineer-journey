@@ -1,0 +1,50 @@
+# Aria — Git Ignore
+# ===================
+# Prevents secrets, compiled files, and generated data from being committed.
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+*.env
+!.env.example        # Keep the template
+
+# ── Google OAuth Credentials ─────────────────────────────────────────────────
+aria/integrations/credentials.json
+aria/integrations/token.json
+
+# ── Databases ────────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+.docker/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
