@@ -1,0 +1,24 @@
+{
+  "name": "ai-automation",
+  "version": "1.0.0",
+  "description": "A hands-on journey building production-grade AI automation skills. This repository tracks my progression through LangChain, RAG, LangGraph, and web APIs — applied directly to building **Priya**, a stateful AI assistant for a dental clinic.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LokeshGaddam14/ai-automation-engineer-journey.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/LokeshGaddam14/ai-automation-engineer-journey/issues"
+  },
+  "homepage": "https://github.com/LokeshGaddam14/ai-automation-engineer-journey#readme",
+  "dependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}

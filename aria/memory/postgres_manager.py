@@ -196,13 +196,15 @@ class PostgresManager:
             )
             return [
                 {
-                    "call_id":    r.call_id,
-                    "date":       r.started_at.strftime("%Y-%m-%d"),
-                    "duration_s": r.duration_secs,
-                    "name":       r.patient_name,
-                    "treatment":  r.treatment,
-                    "booking":    r.booking_status,
-                    "language":   r.language,
+                    "call_id":          r.call_id,
+                    "date":             r.started_at.strftime("%Y-%m-%d"),
+                    "duration_seconds": r.duration_secs,
+                    "duration_s":       r.duration_secs,   # legacy alias
+                    "name":             r.patient_name,
+                    "treatment":        r.treatment,
+                    "booking_status":   r.booking_status,
+                    "booking":          r.booking_status,  # legacy alias
+                    "language":         r.language,
                 }
                 for r in records
             ]
@@ -271,12 +273,15 @@ class PostgresManager:
         """
         Analytics summary — for dashboard and reporting.
         Returns call counts, booking rates, language breakdown.
+        Field names are aliased to match the React dashboard frontend.
         """
         with Session(self.engine) as db:
-            total_calls  = db.query(func.count(CallRecord.call_id)).scalar()
+            total_calls  = db.query(func.count(CallRecord.call_id)).scalar() or 0
             confirmed    = db.query(func.count(CallRecord.call_id))\
-                            .filter(CallRecord.booking_status == "confirmed").scalar()
-            avg_duration = db.query(func.avg(CallRecord.duration_secs)).scalar()
+                            .filter(CallRecord.booking_status == "confirmed").scalar() or 0
+            avg_duration = db.query(func.avg(CallRecord.duration_secs)).scalar() or 0
+            total_duration = db.query(func.sum(CallRecord.duration_secs)).scalar() or 0
+            unique_patients = db.query(func.count(func.distinct(CallRecord.patient_phone))).scalar() or 0
 
             lang_rows = (
                 db.query(CallRecord.language, func.count(CallRecord.call_id))
@@ -285,10 +290,45 @@ class PostgresManager:
             )
             languages = {lang: count for lang, count in lang_rows}
 
+            booking_rate = round(confirmed / total_calls, 3) if total_calls else 0
+
             return {
-                "total_calls":        total_calls,
-                "confirmed_bookings": confirmed,
-                "booking_rate_pct":   round((confirmed / total_calls * 100) if total_calls else 0, 1),
-                "avg_duration_s":     round(avg_duration or 0, 1),
-                "languages":          languages
+                # Frontend-compatible names
+                "total_calls":            total_calls,
+                "confirmed_bookings":     confirmed,
+                "avg_duration_seconds":   round(float(avg_duration), 1),
+                "total_duration_seconds": round(float(total_duration), 1),
+                "unique_patients":        unique_patients,
+                "booking_rate":           booking_rate,
+                "languages":              languages,
+                # Legacy names (keep for backwards compat)
+                "booking_rate_pct":       round(booking_rate * 100, 1),
+                "avg_duration_s":         round(float(avg_duration), 1),
             }
+
+    def list_all_calls(self, limit: int = 50) -> List[Dict]:
+        """List all call records, most recent first."""
+        with Session(self.engine) as db:
+            records = (
+                db.query(CallRecord)
+                .order_by(CallRecord.started_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [self._record_to_dict(r) for r in records]
+
+    def _record_to_dict(self, r) -> Dict:
+        """Convert a CallRecord ORM row to a dashboard-compatible dict."""
+        return {
+            "call_id":        r.call_id,
+            "patient_phone":  r.patient_phone,
+            "started_at":     r.started_at.isoformat() if r.started_at else None,
+            "ended_at":       r.ended_at.isoformat() if r.ended_at else None,
+            "duration_seconds": r.duration_secs,
+            "name":           r.patient_name,
+            "booking_status": r.booking_status or "pending",
+            "treatment":      r.treatment,
+            "turns":          r.turns or [],
+            "extracted_data": r.extracted_data or {},
+        }
+

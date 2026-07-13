@@ -36,10 +36,11 @@ try:
 except ImportError:
     pass
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
 
 # ── Initialize FastAPI ─────────────────────────────────────────────────────────
 app = FastAPI(
@@ -62,6 +63,9 @@ app.add_middleware(
 _handler = None
 _calendar = None
 _notifier = None
+_bolna = None
+
+active_ws_connections: List[WebSocket] = []
 
 
 def get_handler():
@@ -86,6 +90,15 @@ def get_notifier():
         from aria.integrations.twilio_client import TwilioNotifier
         _notifier = TwilioNotifier()
     return _notifier
+
+
+def get_bolna():
+    global _bolna
+    if _bolna is None:
+        from aria.integrations.bolna_client import BolnaClient
+        _bolna = BolnaClient()
+    return _bolna
+
 
 
 # ── Request/Response Models ────────────────────────────────────────────────────
@@ -481,27 +494,31 @@ async def get_stats():
 
 
 @app.get("/analytics/search", tags=["Analytics"])
-async def search_calls(q: str, limit: int = 20):
-    """Search call records by patient name or phone."""
+async def search_calls(q: str = "", limit: int = 20):
+    """Search call records by patient name or phone. Leave q empty to list all."""
     try:
         handler = get_handler()
-        results = handler.postgres.search_calls(q, limit=limit)
+        if q.strip():
+            results = handler.postgres.search_calls(q, limit=limit)
+        else:
+            results = handler.postgres.list_all_calls(limit=limit)
         return {"query": q, "results": results, "total": len(results)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── Active call store (in-memory, per server instance) ────────────────────────
 
-# ── Bolna Webhook (primary integration point) ─────────────────────────────────
+_active_calls: Dict[str, Dict] = {}    # call_id → call state dict
+
+
+# ── Bolna Webhooks ─────────────────────────────────────────────────────────────
 
 @app.post("/webhook/bolna", tags=["Webhooks"])
 async def bolna_webhook(payload: Dict):
     """
-    Bolna AI webhook endpoint.
+    Bolna AI post-call webhook (legacy / primary).
 
-    This is the main integration point — Bolna calls this after each call.
     Configure this URL in your Bolna agent settings.
-
-    Expected payload from Bolna's post-call webhook.
     """
     try:
         call_id = payload.get("executionId") or payload.get("call_id", "unknown")
@@ -509,14 +526,163 @@ async def bolna_webhook(payload: Dict):
         summary = handler.end_call(call_id, payload)
         return {"received": True, "call_id": call_id, "summary": summary}
     except Exception as e:
-        # Always return 200 to Bolna (so it doesn't retry)
         return JSONResponse(
             status_code=200,
             content={"received": True, "error": str(e), "call_id": payload.get("executionId", "unknown")}
         )
 
 
+@app.post("/webhooks/bolna/call-started", tags=["Webhooks"])
+async def bolna_call_started(request: Request):
+    """Bolna webhook: a new call has started."""
+    try:
+        payload = await request.json()
+        call_id = payload.get("call_id", f"call_{int(__import__('time').time() * 1000)}")
+        phone   = payload.get("phone_number", "unknown")
+
+        call_state = {
+            "call_id":       call_id,
+            "patient_phone": phone,
+            "started_at":    datetime.now().isoformat(),
+            "duration":      0,
+            "status":        "active",
+            "transcript":    [],
+            "quality": {
+                "audio_quality":  payload.get("audio_quality", "good"),
+                "latency_ms":     payload.get("latency_ms", 0),
+                "bandwidth_mbps": payload.get("bandwidth_mbps", 0.0),
+            },
+        }
+        _active_calls[call_id] = call_state
+
+        # Broadcast to dashboard
+        msg = json.dumps({"type": "call_update", "data": call_state})
+        for ws in list(active_ws_connections):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                pass
+
+        # Also trigger the unified call handler session
+        try:
+            handler = get_handler()
+            handler.start_call(call_id, phone)
+        except Exception as e:
+            print(f"[Bolna] start_call error: {e}")
+
+        return {"received": True, "call_id": call_id}
+    except Exception as e:
+        print(f"[Bolna call-started] Error: {e}")
+        return JSONResponse(status_code=200, content={"received": True, "error": str(e)})
+
+
+@app.post("/webhooks/bolna/transcript", tags=["Webhooks"])
+async def bolna_transcript_update(request: Request):
+    """Bolna webhook: new transcript turn available."""
+    try:
+        payload  = await request.json()
+        call_id  = payload.get("call_id", "unknown")
+        role     = payload.get("role", "agent")      # "agent" | "user"
+        text     = payload.get("text", "")
+        ts       = payload.get("timestamp", datetime.now().isoformat())
+
+        if role == "user":
+            role = "patient"
+
+        turn = {"role": role, "text": text, "timestamp": ts}
+
+        if call_id in _active_calls:
+            _active_calls[call_id]["transcript"].append(turn)
+            msg = json.dumps({"type": "call_update", "data": _active_calls[call_id]})
+        else:
+            msg = json.dumps({"type": "call_update", "data": {
+                "call_id": call_id, "transcript": [turn], "status": "active",
+                "patient_phone": payload.get("phone_number", "unknown"),
+                "started_at": datetime.now().isoformat(), "duration": 0,
+                "quality": {"audio_quality": "unknown", "latency_ms": 0, "bandwidth_mbps": 0.0},
+            }})
+
+        for ws in list(active_ws_connections):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                pass
+
+        return {"received": True, "call_id": call_id}
+    except Exception as e:
+        print(f"[Bolna transcript] Error: {e}")
+        return JSONResponse(status_code=200, content={"received": True, "error": str(e)})
+
+
+@app.post("/webhooks/bolna/call-ended", tags=["Webhooks"])
+async def bolna_call_ended(request: Request):
+    """Bolna webhook: call has ended."""
+    try:
+        payload = await request.json()
+        call_id = payload.get("call_id", payload.get("executionId", "unknown"))
+
+        if call_id in _active_calls:
+            _active_calls[call_id]["status"] = "ended"
+
+        msg = json.dumps({"type": "call_ended", "data": {"call_id": call_id}})
+        for ws in list(active_ws_connections):
+            try:
+                await ws.send_text(msg)
+            except Exception:
+                pass
+
+        # Archive call to postgres
+        try:
+            handler = get_handler()
+            handler.end_call(call_id, payload)
+        except Exception as e:
+            print(f"[Bolna] end_call error: {e}")
+
+        _active_calls.pop(call_id, None)
+        return {"received": True, "call_id": call_id}
+    except Exception as e:
+        print(f"[Bolna call-ended] Error: {e}")
+        return JSONResponse(status_code=200, content={"received": True, "error": str(e)})
+
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
+
+@app.websocket("/ws/live-calls")
+async def websocket_live_calls(websocket: WebSocket):
+    """
+    WebSocket endpoint for live dashboard call monitoring.
+
+    Clients receive real-time call updates broadcast from Bolna webhooks.
+    On connect, the current active calls list is sent immediately.
+    """
+    await websocket.accept()
+    active_ws_connections.append(websocket)
+    print(f"[LiveCalls WS] Client connected. Total: {len(active_ws_connections)}")
+
+    try:
+        # Send current active calls on connect
+        await websocket.send_text(json.dumps({
+            "type": "active_calls",
+            "data": list(_active_calls.values()),
+        }))
+
+        # Keep connection alive until client disconnects
+        while True:
+            try:
+                await websocket.receive_text()   # ping / keepalive
+            except WebSocketDisconnect:
+                break
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[LiveCalls WS] Error: {e}")
+    finally:
+        if websocket in active_ws_connections:
+            active_ws_connections.remove(websocket)
+        print(f"[LiveCalls WS] Client disconnected. Total: {len(active_ws_connections)}")
+
+
+
 
 @app.websocket("/ws/call/{call_id}")
 async def websocket_call(websocket: WebSocket, call_id: str):

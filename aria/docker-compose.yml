@@ -87,6 +87,24 @@ services:
       - ./integrations/token.json:/app/aria/integrations/token.json:ro
       - ./integrations/credentials.json:/app/aria/integrations/credentials.json:ro
 
+  # ── React Dashboard (Admin Frontend) ─────────────────────────────────────────
+  aria-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aria-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      aria-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 # ── Persistent Volumes ────────────────────────────────────────────────────────
 volumes:
   redis_data:
