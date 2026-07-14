@@ -60,7 +60,7 @@ class RedisSessionManager:
     def __init__(self):
         """Initialize connection — prefers Upstash over local Redis."""
         self.mode = self._init_connection()
-        print(f"✅ RedisSessionManager initialized (mode: {self.mode})")
+        print(f"[OK] RedisSessionManager initialized (mode: {self.mode})")
 
     def _init_connection(self) -> str:
         """Try Upstash REST → local Redis → in-memory fallback."""

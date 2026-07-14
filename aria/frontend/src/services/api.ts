@@ -11,9 +11,20 @@ import type {
 } from '../types';
 
 // ── Axios Instance ─────────────────────────────────────────────────────────────
-// Uses the Vite proxy: /api → http://localhost:8000
+// Resolve the base URLs dynamically or from env variables
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.DEV 
+    ? 'http://localhost:8000' 
+    : `${window.location.protocol}//${window.location.hostname}:8000`);
+
+export const WS_BASE_URL = import.meta.env.VITE_WS_URL || 
+  (API_BASE_URL.startsWith('https:') 
+    ? API_BASE_URL.replace(/^https:/, 'wss:') 
+    : API_BASE_URL.replace(/^http:/, 'ws:'));
+
+// Uses the Vite proxy in development or direct dynamic URL in production
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 15_000,
 });

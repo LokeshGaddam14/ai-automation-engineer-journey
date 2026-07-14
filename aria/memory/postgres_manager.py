@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from sqlalchemy import (
-    Column, DateTime, Integer, JSON, String, Text,
-    create_engine, func
+    Column, DateTime, Integer, JSON, String, Text, Boolean,
+    create_engine, func, text
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -67,6 +67,10 @@ class CallRecord(Base):
     treatment        = Column(String(200), nullable=True)
     booking_status   = Column(String(50),  default="pending")
 
+    # Smart Features Flags
+    reminder_sent    = Column(Boolean, default=False)
+    followup_sent    = Column(Boolean, default=False)
+
     # Full data as JSON (flexible, no schema changes needed)
     extracted_data   = Column(JSON, default=dict)
     turns            = Column(JSON, default=list)
@@ -108,9 +112,21 @@ class PostgresManager:
         self.engine = create_engine(db_url, connect_args=connect_args)
         Base.metadata.create_all(self.engine)
 
+        # Simple auto-migration for SQLite/Postgres since we don't have Alembic
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE call_records ADD COLUMN reminder_sent BOOLEAN DEFAULT FALSE;"))
+        except Exception:
+            pass
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE call_records ADD COLUMN followup_sent BOOLEAN DEFAULT FALSE;"))
+        except Exception:
+            pass
+
         db_type = "SQLite" if db_url.startswith("sqlite") else \
                   "Supabase" if "supabase" in db_url else "PostgreSQL"
-        print(f"✅ PostgresManager initialized (DB: {db_type})")
+        print(f"[OK] PostgresManager initialized (DB: {db_type})")
 
     # ── Write operations ───────────────────────────────────────────────────────
 
@@ -162,8 +178,30 @@ class PostgresManager:
 
             db.add(record)
             db.commit()
-            print(f"📁 Call archived: {record.call_id} | Duration: {duration}s")
+            print(f"[Archive] Call archived: {record.call_id} | Duration: {duration}s")
             return record.call_id
+
+    def create_direct_booking(self, name: str, phone: str, date: str, time: str, treatment: str, booking_id: str, status: str = "confirmed") -> str:
+        """Create a direct booking record (e.g. from external API like Bolna)."""
+        import uuid
+        call_id = f"ext_{uuid.uuid4().hex[:12]}"
+        session_dict = {
+            "call_id": call_id,
+            "patient_phone": phone,
+            "started_at": datetime.utcnow().isoformat(),
+            "ended_at": datetime.utcnow().isoformat(),
+            "extracted_data": {
+                "name": name,
+                "phone": phone,
+                "appointmentDate": date,
+                "appointmentTime": time,
+                "treatment": treatment,
+                "bookingId": booking_id,
+                "booking_status": status,
+                "summary": f"Direct booking created via external receptionist."
+            }
+        }
+        return self.save_call(session_dict)
 
     def log_reminder(self, call_id: str, patient_phone: str, channel: str) -> int:
         """Log that a reminder was sent (prevents duplicates)."""
@@ -292,6 +330,28 @@ class PostgresManager:
 
             booking_rate = round(confirmed / total_calls, 3) if total_calls else 0
 
+            # Treatment mix
+            treatment_rows = (
+                db.query(CallRecord.treatment, func.count(CallRecord.call_id))
+                .filter(CallRecord.treatment != None, CallRecord.treatment != "")
+                .group_by(CallRecord.treatment)
+                .order_by(func.count(CallRecord.call_id).desc())
+                .limit(8)
+                .all()
+            )
+            treatments = [{"treatment": t, "count": c} for t, c in treatment_rows]
+
+            # Daily calls (last 7 days using naive string grouping for cross-db compatibility)
+            # A simple group_by on the date prefix
+            daily_rows = (
+                db.query(func.substr(CallRecord.started_at, 1, 10).label('day'), func.count(CallRecord.call_id))
+                .group_by('day')
+                .order_by('day')
+                .limit(7)
+                .all()
+            )
+            daily_calls = [{"date": d, "count": c} for d, c in daily_rows]
+
             return {
                 # Frontend-compatible names
                 "total_calls":            total_calls,
@@ -301,6 +361,8 @@ class PostgresManager:
                 "unique_patients":        unique_patients,
                 "booking_rate":           booking_rate,
                 "languages":              languages,
+                "treatments":             treatments,
+                "by_date":                daily_calls,
                 # Legacy names (keep for backwards compat)
                 "booking_rate_pct":       round(booking_rate * 100, 1),
                 "avg_duration_s":         round(float(avg_duration), 1),

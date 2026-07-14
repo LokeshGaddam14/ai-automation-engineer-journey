@@ -1,0 +1,10 @@
+- [x] Update `tailwind.config.js` with forest-green, mint and emerald colors
+- [x] Update global variables in `index.css` to match the new medical theme
+- [x] Update color classes in `Layout.tsx`
+- [x] Update color classes and gradients in `Dashboard.tsx`
+- [x] Update color classes in `Calls.tsx`
+- [x] Update color classes in `Bookings.tsx`
+- [x] Update color classes in `Patients.tsx`
+- [x] Update color classes in `Reports.tsx`
+- [x] Update color classes in `Settings.tsx`
+- [x] Verify linting and build succeed

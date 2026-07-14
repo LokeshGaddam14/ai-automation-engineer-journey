@@ -3,12 +3,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // ── WebSocket Hook ─────────────────────────────────────────────────────────────
 export function useWebSocket(
   url: string | null,
-  onMessage: (data: any) => void
+  onMessage: (data: unknown) => void
 ) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+
+  // Use a ref to store connect function to avoid self-referencing closure errors
+  const connectRef = useRef<() => void>();
 
   const connect = useCallback(() => {
     if (!url || !mountedRef.current) return;
@@ -32,14 +35,20 @@ export function useWebSocket(
     ws.onclose = () => {
       if (!mountedRef.current) return;
       setConnected(false);
-      // Auto-reconnect after 3s
-      reconnectRef.current = setTimeout(connect, 3000);
+      // Auto-reconnect after 3s using the ref to avoid connect declaration issues
+      reconnectRef.current = setTimeout(() => {
+        connectRef.current?.();
+      }, 3000);
     };
 
     ws.onerror = () => {
       ws.close();
     };
   }, [url, onMessage]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -51,7 +60,7 @@ export function useWebSocket(
     };
   }, [connect]);
 
-  const send = useCallback((data: any) => {
+  const send = useCallback((data: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
     }

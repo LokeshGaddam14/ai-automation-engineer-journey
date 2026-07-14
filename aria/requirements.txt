@@ -42,6 +42,7 @@ python-dotenv==1.0.1          # .env loading
 httpx==0.27.0                 # Async HTTP client
 aiofiles==24.1.0              # Async file I/O
 requests==2.31.0              # Sync HTTP client (Bolna client)
+apscheduler==3.10.4           # Background task scheduling
 
 
 # ── Testing ───────────────────────────────────────────────────────────────────

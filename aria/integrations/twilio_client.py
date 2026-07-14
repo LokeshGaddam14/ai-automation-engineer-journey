@@ -75,7 +75,7 @@ class TwilioNotifier:
         try:
             from twilio.rest import Client
             self.client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-            print("[Twilio] Client initialized ✅")
+            print("[Twilio] Client initialized [OK]")
         except ImportError:
             print("[Twilio] twilio package not installed → MOCK MODE")
             print("         Install: pip install twilio")

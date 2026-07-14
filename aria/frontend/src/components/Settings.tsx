@@ -6,8 +6,9 @@ import {
   Wifi,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { healthAPI } from '../services/api';
+import { healthAPI, API_BASE_URL } from '../services/api';
 import { useApi } from '../hooks/useApi';
+import { usePageEntrance } from '../hooks/useGsap';
 
 // ── Setting Section ────────────────────────────────────────────────────────────
 function SettingSection({ title, icon: Icon, children }: {
@@ -18,8 +19,8 @@ function SettingSection({ title, icon: Icon, children }: {
   return (
     <div className="glass-card p-6">
       <div className="flex items-center gap-3 mb-5">
-        <div className="icon-wrapper bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20">
-          <Icon size={18} className="text-indigo-400" />
+        <div className="icon-wrapper bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/20">
+          <Icon size={18} className="text-emerald-400" />
         </div>
         <h2 className="section-title">{title}</h2>
       </div>
@@ -32,8 +33,8 @@ function SettingSection({ title, icon: Icon, children }: {
 function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between py-3 border-b divider last:border-0">
-      <span className="text-sm text-white/50">{label}</span>
-      <span className={`text-sm text-white/80 font-medium text-right max-w-[240px] truncate ${mono ? 'font-mono text-xs' : ''}`}>
+      <span className="text-sm text-slate-500 dark:text-white/50">{label}</span>
+      <span className={`text-sm text-slate-500 dark:text-white/80 font-medium text-right max-w-[240px] truncate ${mono ? 'font-mono text-xs' : ''}`}>
         {value}
       </span>
     </div>
@@ -49,13 +50,13 @@ function ApiHealthWidget() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           {loading ? (
-            <Loader2 size={16} className="animate-spin text-indigo-400" />
+            <Loader2 size={16} className="animate-spin text-emerald-400" />
           ) : error ? (
             <XCircle size={16} className="text-red-400" />
           ) : (
             <CheckCircle2 size={16} className="text-emerald-400" />
           )}
-          <span className={`text-sm font-semibold ${error ? 'text-red-400' : loading ? 'text-white/40' : 'text-emerald-400'}`}>
+          <span className={`text-sm font-semibold ${error ? 'text-red-400' : loading ? 'text-slate-500 dark:text-white/40' : 'text-emerald-400'}`}>
             {loading ? 'Checking…' : error ? 'Unreachable' : health?.status ?? 'Healthy'}
           </span>
         </div>
@@ -78,7 +79,7 @@ function ApiHealthWidget() {
 
       {error && (
         <div className="glass-card-flat border border-red-500/20 px-4 py-3 rounded-xl text-sm text-red-400">
-          <p>Cannot reach FastAPI at <code className="font-mono text-xs">localhost:8000</code></p>
+          <p>Cannot reach FastAPI at <code className="font-mono text-xs">{API_BASE_URL}</code></p>
           <p className="text-xs text-red-400/70 mt-1">Make sure the backend is running: <code className="font-mono">uvicorn aria.main:app --reload</code></p>
         </div>
       )}
@@ -96,13 +97,13 @@ function ToggleSetting({ label, description, checked, onChange }: {
   return (
     <div className="flex items-center justify-between py-3 border-b divider last:border-0">
       <div>
-        <p className="text-sm font-medium text-white/80">{label}</p>
-        {description && <p className="text-xs text-white/40 mt-0.5">{description}</p>}
+        <p className="text-sm font-medium text-slate-500 dark:text-white/80">{label}</p>
+        {description && <p className="text-xs text-slate-500 dark:text-white/40 mt-0.5">{description}</p>}
       </div>
       <button
         onClick={() => onChange(!checked)}
         className={`relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0 ${
-          checked ? 'bg-indigo-600' : 'bg-white/10'
+          checked ? 'bg-emerald-600' : 'bg-slate-900/5 dark:bg-white/10'
         }`}
       >
         <span
@@ -124,12 +125,14 @@ export function Settings() {
     callAlerts:   true,
   });
 
+  const pageRef = usePageEntrance();
+
   return (
-    <div className="p-6 space-y-6">
+    <div ref={pageRef} className="p-6 space-y-6">
       {/* Header */}
       <div>
         <h1 className="page-title">Settings</h1>
-        <p className="text-sm text-white/40 mt-1">Dashboard and system configuration</p>
+        <p className="text-sm text-slate-500 dark:text-white/40 mt-1">Dashboard and system configuration</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -147,8 +150,8 @@ export function Settings() {
               { icon: MapPin, text: 'Hyderabad' },
               { icon: Globe, text: 'naveen-dental.in' },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-xs text-white/50">
-                <Icon size={11} className="text-indigo-400" />
+              <div key={text} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/5 dark:bg-white/[0.05] border border-slate-900/10 dark:border-white/[0.08] text-xs text-slate-500 dark:text-white/50">
+                <Icon size={11} className="text-emerald-400" />
                 {text}
               </div>
             ))}
@@ -233,7 +236,7 @@ export function Settings() {
 
         {/* User Management placeholder */}
         <SettingSection title="User Management" icon={Users}>
-          <div className="text-center py-8 text-white/30">
+          <div className="text-center py-8 text-slate-500 dark:text-white/30">
             <Users size={32} className="mx-auto mb-3 opacity-40" />
             <p className="text-sm font-medium">Single-user mode</p>
             <p className="text-xs mt-1.5">Multi-user support coming in Day 20</p>

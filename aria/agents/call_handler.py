@@ -245,7 +245,7 @@ class UnifiedCallHandler:
             "treatment":  extracted.get("treatment"),
             "archived":   True,
         }
-        print(f"✅ Call lifecycle complete: {json.dumps(summary, ensure_ascii=False)}")
+        print(f"[OK] Call lifecycle complete: {json.dumps(summary, ensure_ascii=False)}")
         return summary
 
     def get_context_for_returning_patient(self, patient_phone: str) -> str:

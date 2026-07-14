@@ -38,7 +38,7 @@ export function exportCallsToPDF(calls: Call[], title = 'Aria Call Report') {
   const doc = new jsPDF({ orientation: 'landscape' });
 
   // Header
-  doc.setFillColor(99, 102, 241);
+  doc.setFillColor(16, 185, 129); // Emerald 500
   doc.rect(0, 0, doc.internal.pageSize.getWidth(), 22, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
@@ -54,9 +54,9 @@ export function exportCallsToPDF(calls: Call[], title = 'Aria Call Report') {
   let x = 14;
   let y = 32;
 
-  doc.setFillColor(30, 30, 50);
+  doc.setFillColor(6, 78, 59); // Emerald 900
   doc.rect(14, y - 5, doc.internal.pageSize.getWidth() - 28, 8, 'F');
-  doc.setTextColor(180, 180, 220);
+  doc.setTextColor(167, 243, 208); // Emerald 200
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   cols.forEach((col, i) => {
@@ -75,7 +75,7 @@ export function exportCallsToPDF(calls: Call[], title = 'Aria Call Report') {
 
     // Alternate row shading
     if (idx % 2 === 0) {
-      doc.setFillColor(240, 240, 255);
+      doc.setFillColor(236, 253, 245); // Emerald 50
       doc.rect(14, y - 4, doc.internal.pageSize.getWidth() - 28, 7, 'F');
     }
 
@@ -115,7 +115,7 @@ export function exportCallsToPDF(calls: Call[], title = 'Aria Call Report') {
 export function exportLiveCallTranscriptToPDF(call: LiveCall) {
   const doc = new jsPDF();
 
-  doc.setFillColor(99, 102, 241);
+  doc.setFillColor(16, 185, 129); // Emerald 500
   doc.rect(0, 0, doc.internal.pageSize.getWidth(), 22, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(13);
@@ -134,7 +134,7 @@ export function exportLiveCallTranscriptToPDF(call: LiveCall) {
     }
 
     const isAgent = turn.role === 'agent';
-    doc.setFillColor(isAgent ? 220 : 240, isAgent ? 225 : 240, isAgent ? 255 : 245);
+    doc.setFillColor(isAgent ? 209 : 248, isAgent ? 250 : 250, isAgent ? 229 : 250); // Emerald 100 / Gray 50
     const textLines = doc.splitTextToSize(turn.text, 160);
     const boxH = textLines.length * 5 + 8;
     doc.roundedRect(isAgent ? 14 : 30, y - 4, 160, boxH, 2, 2, 'F');

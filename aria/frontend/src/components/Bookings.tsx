@@ -7,13 +7,14 @@ import {
 import { bookingsAPI, calendarAPI } from '../services/api';
 import { useApi } from '../hooks/useApi';
 import { useStore } from '../store/useStore';
+import { usePageEntrance } from '../hooks/useGsap';
 import type { PendingBooking } from '../types';
 
 // ── Modal: Reschedule ──────────────────────────────────────────────────────────
 interface RescheduleModalProps {
   booking: PendingBooking;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newDate: string, newTime: string) => void;
 }
 
 function RescheduleModal({ booking, onClose, onSuccess }: RescheduleModalProps) {
@@ -39,7 +40,7 @@ function RescheduleModal({ booking, onClose, onSuccess }: RescheduleModalProps) 
         treatment: booking.treatment,
       });
       showToast('Appointment rescheduled & WhatsApp sent ✓', 'success');
-      onSuccess();
+      onSuccess(newDate, newTime);
       onClose();
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Reschedule failed', 'error');
@@ -53,23 +54,23 @@ function RescheduleModal({ booking, onClose, onSuccess }: RescheduleModalProps) 
       <div className="glass-card p-6 w-full max-w-md animate-fade-in">
         <div className="flex items-center gap-3 mb-6">
           <div className="icon-wrapper bg-gradient-brand">
-            <ArrowRightLeft size={18} className="text-white" />
+            <ArrowRightLeft size={18} className="text-slate-900 dark:text-white" />
           </div>
           <div>
             <h2 className="section-title">Reschedule Appointment</h2>
-            <p className="text-xs text-white/40 mt-0.5">{booking.name} · {booking.phone}</p>
+            <p className="text-xs text-slate-500 dark:text-white/40 mt-0.5">{booking.name} · {booking.phone}</p>
           </div>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-white/50 mb-1.5">Current Date</label>
-            <div className="input-field text-white/40 cursor-default">{booking.date}</div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-white/50 mb-1.5">Current Date</label>
+            <div className="input-field text-slate-500 dark:text-white/40 cursor-default">{booking.date}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-white/50 mb-1.5">New Date</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-white/50 mb-1.5">New Date</label>
               <input
                 type="date"
                 value={newDate}
@@ -79,7 +80,7 @@ function RescheduleModal({ booking, onClose, onSuccess }: RescheduleModalProps) 
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-white/50 mb-1.5">New Time</label>
+              <label className="block text-xs font-medium text-slate-500 dark:text-white/50 mb-1.5">New Time</label>
               <input
                 type="time"
                 value={newTime}
@@ -109,21 +110,29 @@ interface BookingCardProps {
 }
 
 function BookingCard({ booking, onRefetch }: BookingCardProps) {
+  // Local copy so we can update it immediately after reschedule (optimistic update)
+  const [localBooking, setLocalBooking] = useState<PendingBooking>(booking);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const { showToast } = useStore();
 
+  // Called by RescheduleModal on success — instantly update the card
+  const handleRescheduleSuccess = (newDate: string, newTime: string) => {
+    setLocalBooking(prev => ({ ...prev, date: newDate, time: newTime }));
+    onRefetch(); // background sync with server
+  };
+
   const sendReminder = async () => {
     setSending(true);
     try {
       await bookingsAPI.sendReminder({
-        call_id:   booking.call_id,
-        phone:     booking.phone,
-        name:      booking.name ?? 'Patient',
-        date:      booking.date,
-        time:      booking.time ?? '',
-        treatment: booking.treatment,
+        call_id:   localBooking.call_id,
+        phone:     localBooking.phone,
+        name:      localBooking.name ?? 'Patient',
+        date:      localBooking.date,
+        time:      localBooking.time ?? '',
+        treatment: localBooking.treatment,
         channel:   'whatsapp',
       });
       showToast('Reminder sent via WhatsApp ✓', 'success');
@@ -135,15 +144,15 @@ function BookingCard({ booking, onRefetch }: BookingCardProps) {
   };
 
   const cancelBooking = async () => {
-    if (!confirm(`Cancel ${booking.name ?? booking.phone}'s appointment on ${booking.date}?`)) return;
+    if (!confirm(`Cancel ${localBooking.name ?? localBooking.phone}'s appointment on ${localBooking.date}?`)) return;
     setCancelling(true);
     try {
       await bookingsAPI.cancel({
-        call_id: booking.call_id,
-        phone:   booking.phone,
-        name:    booking.name ?? 'Patient',
-        date:    booking.date,
-        time:    booking.time ?? '',
+        call_id: localBooking.call_id,
+        phone:   localBooking.phone,
+        name:    localBooking.name ?? 'Patient',
+        date:    localBooking.date,
+        time:    localBooking.time ?? '',
         reason:  'Cancelled via admin dashboard',
       });
       showToast('Appointment cancelled ✓', 'success');
@@ -157,42 +166,42 @@ function BookingCard({ booking, onRefetch }: BookingCardProps) {
 
   return (
     <>
-      <div className="glass-card p-5 hover:border-indigo-500/30 group">
+      <div className="glass-card p-5 hover:border-emerald-500/30 group">
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center flex-shrink-0">
-              <User size={18} className="text-indigo-400" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+              <User size={18} className="text-emerald-400" />
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">{booking.name ?? 'Unknown Patient'}</p>
-              <div className="flex items-center gap-1.5 text-xs text-white/40 mt-0.5">
+              <p className="font-semibold text-slate-900 dark:text-white text-sm">{localBooking.name ?? 'Unknown Patient'}</p>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-white/40 mt-0.5">
                 <Phone size={10} />
-                <span>{booking.phone}</span>
+                <span>{localBooking.phone}</span>
               </div>
             </div>
           </div>
-          <span className={`badge-${booking.booking_status === 'confirmed' ? 'confirmed' : 'pending'}`}>
-            {booking.booking_status ?? 'pending'}
+          <span className={`badge-${localBooking.booking_status === 'confirmed' ? 'confirmed' : 'pending'}`}>
+            {localBooking.booking_status ?? 'pending'}
           </span>
         </div>
 
         {/* Details */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="flex items-center gap-2 text-xs text-white/50">
-            <Calendar size={12} className="text-indigo-400" />
-            <span>{booking.date}</span>
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-white/50">
+            <Calendar size={12} className="text-emerald-400" />
+            <span>{localBooking.date}</span>
           </div>
-          {booking.time && (
-            <div className="flex items-center gap-2 text-xs text-white/50">
+          {localBooking.time && (
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-white/50">
               <Clock size={12} className="text-purple-400" />
-              <span>{booking.time}</span>
+              <span>{localBooking.time}</span>
             </div>
           )}
-          {booking.treatment && (
-            <div className="flex items-center gap-2 text-xs text-white/50 col-span-2">
+          {localBooking.treatment && (
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-white/50 col-span-2">
               <ChevronRight size={12} className="text-cyan-400" />
-              <span>{booking.treatment}</span>
+              <span>{localBooking.treatment}</span>
             </div>
           )}
         </div>
@@ -227,9 +236,9 @@ function BookingCard({ booking, onRefetch }: BookingCardProps) {
 
       {rescheduleOpen && (
         <RescheduleModal
-          booking={booking}
+          booking={localBooking}
           onClose={() => setRescheduleOpen(false)}
-          onSuccess={onRefetch}
+          onSuccess={handleRescheduleSuccess}
         />
       )}
     </>
@@ -243,7 +252,7 @@ function TodaySchedule() {
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 mb-4">
-        <CalendarDays size={16} className="text-indigo-400" />
+        <CalendarDays size={16} className="text-emerald-400" />
         <h3 className="section-title text-base">Today's Schedule</h3>
       </div>
 
@@ -252,14 +261,14 @@ function TodaySchedule() {
           {[1,2,3].map(i => <div key={i} className="h-10 rounded-lg animate-shimmer" />)}
         </div>
       ) : schedule?.appointments?.length === 0 ? (
-        <p className="text-sm text-white/30 text-center py-6">No appointments today</p>
+        <p className="text-sm text-slate-500 dark:text-white/30 text-center py-6">No appointments today</p>
       ) : (
         <div className="space-y-2">
           {schedule?.appointments?.map((appt, idx) => (
-            <div key={idx} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
-              <span className="text-xs font-semibold text-indigo-300 w-14">{appt.time}</span>
-              <span className="text-xs text-white/70 truncate">{appt.summary}</span>
+            <div key={idx} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-900/5 dark:bg-white/[0.04] border border-slate-900/10 dark:border-white/[0.06]">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-emerald-300 w-14">{appt.time}</span>
+              <span className="text-xs text-slate-500 dark:text-white/70 truncate">{appt.summary}</span>
             </div>
           ))}
         </div>
@@ -272,14 +281,15 @@ function TodaySchedule() {
 export function Bookings() {
   const { data, loading, refetch } = useApi(() => bookingsAPI.getPending(), []);
   const bookings: PendingBooking[] = data?.bookings ?? [];
+  const pageRef = usePageEntrance();
 
   return (
-    <div className="p-6 space-y-6">
+    <div ref={pageRef} className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Bookings</h1>
-          <p className="text-sm text-white/40 mt-1">
+          <p className="text-sm text-slate-500 dark:text-white/40 mt-1">
             {data?.total ?? 0} upcoming appointments
           </p>
         </div>
@@ -301,7 +311,7 @@ export function Bookings() {
           )}
 
           {!loading && bookings.length === 0 && (
-            <div className="glass-card flex flex-col items-center justify-center py-20 text-white/30">
+            <div className="glass-card flex flex-col items-center justify-center py-20 text-slate-500 dark:text-white/30">
               <CalendarDays size={40} className="mb-3 opacity-40" />
               <p className="text-sm font-medium">No pending bookings</p>
               <p className="text-xs mt-1">New bookings will appear here</p>
@@ -331,7 +341,7 @@ export function Bookings() {
                 { label: 'Needs Attention', value: bookings.filter(b => b.booking_status !== 'confirmed').length, color: 'text-orange-400' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="flex items-center justify-between text-sm">
-                  <span className="text-white/50">{label}</span>
+                  <span className="text-slate-500 dark:text-white/50">{label}</span>
                   <span className={`font-bold ${color}`}>{value}</span>
                 </div>
               ))}

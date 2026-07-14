@@ -21,6 +21,7 @@ A hands-on journey building production-grade AI automation skills. This reposito
 - **Day 13** — **Webhook Automation (n8n)**: Built full post-call automation pipeline. Bolna fires a webhook → n8n parses Telugu/multilingual payload → logs to Google Sheets → sends branded Gmail to dentist + patient.
 - **Day 14** — **Memory Architecture**: Implemented dual-layer persistence — Redis (Upstash) for real-time call session state + SQLite/Postgres for durable archival. Unified call handler bridges Bolna → Redis → Postgres lifecycle.
 - **Day 15** — **Integrations & Multi-Agent**: Google Calendar for availability checks + auto-booking. LangGraph multi-agent orchestrator routing calls through Greeting → Booking/Info/Emergency → Escalation agents in Telugu/Hindi/English.
+- **Day 16** — **Real-Time Analytics Dashboard**: Production-grade web dashboard for Aria — live call feed via WebSocket, booking analytics, agent routing charts, language distribution, treatment mix, system health monitor. Reads from Day 14 SQLite/Postgres DB.
 
 ---
 

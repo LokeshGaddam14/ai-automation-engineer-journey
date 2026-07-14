@@ -54,6 +54,7 @@ export interface Analytics {
   completed_calls?: number;
   active_calls?: number;
   languages?: Record<string, number>;
+  treatments?: Array<{ treatment: string; count: number }>;
   by_date?: Array<{ date: string; count: number }>;
 }
 

@@ -60,10 +60,10 @@ class BolnaClient:
             )
             response.raise_for_status()
             result = response.json()
-            print(f"✅ Agent created: {result.get('agent_id')}")
+            print(f"[OK] Agent created: {result.get('agent_id')}")
             return result
         except Exception as e:
-            print(f"❌ Error creating agent: {e}")
+            print(f"[Error] Error creating agent: {e}")
             return {"error": str(e), "status": "failed"}
 
     def get_agent(self, agent_id: str) -> Dict:
@@ -168,7 +168,7 @@ class WebSocketManager:
         """Add a new WebSocket connection."""
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"✅ Dashboard client connected. Total: {len(self.active_connections)}")
+        print(f"[OK] Dashboard client connected. Total: {len(self.active_connections)}")
 
     async def disconnect(self, websocket) -> None:
         """Remove a WebSocket connection."""

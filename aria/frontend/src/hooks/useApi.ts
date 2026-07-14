@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // ── Generic API Data Fetching Hook ─────────────────────────────────────────────
 export function useApi<T>(
@@ -22,12 +22,10 @@ export function useApi<T>(
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, dependencies);
 
   useEffect(() => {
     refetch();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetch]);
 
   return { data, loading, error, refetch };

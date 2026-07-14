@@ -22,6 +22,10 @@ interface AppStore {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
 
+  // Theme
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+
   // Notification toast
   toast: { message: string; type: 'success' | 'error' | 'info' } | null;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -43,6 +47,13 @@ export const useStore = create<AppStore>((set) => ({
 
   searchQuery: '',
   setSearchQuery: (q) => set({ searchQuery: q }),
+
+  theme: (localStorage.getItem('theme') as 'light' | 'dark') || 'dark',
+  toggleTheme: () => set((s) => {
+    const next = s.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', next);
+    return { theme: next };
+  }),
 
   toast: null,
   showToast: (message, type = 'info') => {

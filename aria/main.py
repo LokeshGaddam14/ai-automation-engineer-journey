@@ -38,7 +38,8 @@ except ImportError:
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 
@@ -168,6 +169,15 @@ class CancelRequest(BaseModel):
 
 class SlotRequest(BaseModel):
     date: str
+
+class BookRequest(BaseModel):
+    name: str
+    phone: str
+    date: str
+    time: str
+    treatment: Optional[str] = "Dental Appointment"
+    email: Optional[str] = ""
+    booking_id: Optional[str] = ""
 
 
 # ── Health Check ──────────────────────────────────────────────────────────────
@@ -461,6 +471,44 @@ async def get_available_slots(req: SlotRequest):
         cal = get_calendar()
         slots = cal.get_available_slots(req.date)
         return {"date": req.date, "available_slots": slots, "count": len(slots)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/calendar/book", tags=["Calendar"])
+async def book_calendar_appointment(req: BookRequest):
+    """Book an appointment on Google Calendar and archive it in local database."""
+    try:
+        b_id = req.booking_id
+        if not b_id:
+            import random
+            b_id = f"BLN{random.randint(1000000, 9999999)}"
+
+        cal = get_calendar()
+        result = cal.book_appointment(
+            patient_name  = req.name,
+            patient_phone = req.phone,
+            date_str      = req.date,
+            time_str      = req.time,
+            treatment     = req.treatment,
+            patient_email = req.email,
+            booking_id    = b_id,
+        )
+
+        if result.get("status") == "confirmed":
+            handler = get_handler()
+            handler.postgres.create_direct_booking(
+                name       = req.name,
+                phone      = req.phone,
+                date       = req.date,
+                time       = req.time,
+                treatment  = req.treatment,
+                booking_id = b_id,
+                status     = "confirmed",
+            )
+            return {"status": "confirmed", "booking_id": b_id, "calendar_event": result}
+        else:
+            return {"status": "failed", "message": result.get("message", "Unknown error")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -761,6 +809,18 @@ async def websocket_call(websocket: WebSocket, call_id: str):
             await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
         except Exception:
             pass
+
+
+# ── Frontend Dashboard ────────────────────────────────────────────────────────
+
+frontend_path = Path(__file__).parent / "frontend" / "dist"
+if frontend_path.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_path / "assets")), name="assets")
+
+    @app.get("/dashboard", tags=["System"])
+    async def dashboard():
+        """Serve the React frontend dashboard."""
+        return FileResponse(str(frontend_path / "index.html"))
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────

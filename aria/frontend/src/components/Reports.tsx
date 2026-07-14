@@ -8,13 +8,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import { analyticsAPI } from '../services/api';
+import { usePageEntrance } from '../hooks/useGsap';
 import { useApi } from '../hooks/useApi';
 import { exportCallsToCSV, exportCallsToPDF } from '../utils/export';
 import { useStore } from '../store/useStore';
-import type { Call, Analytics } from '../types';
+import type { Call } from '../types';
 
 // ── Colour Palette ─────────────────────────────────────────────────────────────
-const COLORS = ['#6366f1', '#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+const COLORS = ['#2dd4bf', '#14b8a6', '#0f766e', '#38bdf8', '#0ea5e9', '#0284c7'];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtDuration(s: number) {
@@ -26,10 +27,10 @@ function fmtDuration(s: number) {
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="glass-card-flat border border-indigo-500/30 px-3 py-2 rounded-xl text-xs">
-      <p className="text-white/60 mb-1">{label}</p>
+    <div className="glass-card-flat border border-emerald-500/30 px-3 py-2 rounded-xl text-xs">
+      <p className="text-slate-500 dark:text-white/60 mb-1">{label}</p>
       {payload.map((p, i) => (
-        <p key={i} className="text-white font-bold">{p.name}: {p.value.toLocaleString()}</p>
+        <p key={i} className="text-slate-900 dark:text-white font-bold">{p.name}: {p.value.toLocaleString()}</p>
       ))}
     </div>
   );
@@ -47,12 +48,12 @@ function MetricCard({ label, value, sub, icon: Icon, color }: {
     <div className="glass-card p-5">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs text-white/50 mb-1">{label}</p>
-          <p className="text-2xl font-extrabold text-white">{value}</p>
-          {sub && <p className="text-[11px] text-white/35 mt-1">{sub}</p>}
+          <p className="text-xs text-slate-500 dark:text-white/50 mb-1">{label}</p>
+          <p className="text-2xl font-extrabold text-slate-900 dark:text-white">{value}</p>
+          {sub && <p className="text-[11px] text-slate-500 dark:text-white/35 mt-1">{sub}</p>}
         </div>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: color }}>
-          <Icon size={18} className="text-white" />
+          <Icon size={18} className="text-slate-900 dark:text-white" />
         </div>
       </div>
     </div>
@@ -158,16 +159,18 @@ export function Reports() {
 
   const loading = statsLoading || callsLoading;
 
+  const pageRef = usePageEntrance();
+
   return (
-    <div className="p-6 space-y-6">
+    <div ref={pageRef} className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title flex items-center gap-2">
-            <BarChart3 size={20} className="text-indigo-400" />
+            <BarChart3 size={20} className="text-emerald-400" />
             Reports & Export
           </h1>
-          <p className="text-sm text-white/40 mt-1">
+          <p className="text-sm text-slate-500 dark:text-white/40 mt-1">
             {filteredCalls.length} records · {dateRange} window
           </p>
         </div>
@@ -188,14 +191,14 @@ export function Reports() {
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Date range */}
-        <div className="flex items-center gap-1 glass-card-flat border border-white/10 rounded-xl p-1">
-          <Filter size={12} className="text-white/30 ml-2" />
+        <div className="flex items-center gap-1 glass-card-flat border border-slate-900/10 dark:border-white/10 rounded-xl p-1">
+          <Filter size={12} className="text-slate-500 dark:text-white/30 ml-2" />
           {(['24h', '7d', '30d', 'all'] as const).map((r) => (
             <button
               key={r}
               onClick={() => setDateRange(r)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                dateRange === r ? 'bg-indigo-500 text-white' : 'text-white/50 hover:text-white'
+                dateRange === r ? 'bg-emerald-500 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-white/50 hover:text-slate-900 dark:text-white'
               }`}
             >
               {r === 'all' ? 'All time' : r}
@@ -204,13 +207,13 @@ export function Reports() {
         </div>
 
         {/* Status filter */}
-        <div className="flex items-center gap-1 glass-card-flat border border-white/10 rounded-xl p-1">
+        <div className="flex items-center gap-1 glass-card-flat border border-slate-900/10 dark:border-white/10 rounded-xl p-1">
           {(['all', 'confirmed', 'pending', 'cancelled'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${
-                statusFilter === s ? 'bg-indigo-500 text-white' : 'text-white/50 hover:text-white'
+                statusFilter === s ? 'bg-emerald-500 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-white/50 hover:text-slate-900 dark:text-white'
               }`}
             >
               {s}
@@ -219,27 +222,26 @@ export function Reports() {
         </div>
       </div>
 
-      {/* Metric Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <MetricCard label="Filtered Calls"  value={filteredCalls.length}        sub="in selected range"  icon={Phone}        color="linear-gradient(135deg,#6366f1,#4f46e5)" />
-        <MetricCard label="Unique Patients" value={uniquePhones}                sub="distinct phones"    icon={Users}        color="linear-gradient(135deg,#06b6d4,#0891b2)" />
-        <MetricCard label="Avg Duration"    value={fmtDuration(Math.round(totalDuration / Math.max(filteredCalls.length, 1)))} sub="per call"  icon={Clock}        color="linear-gradient(135deg,#f59e0b,#d97706)" />
-        <MetricCard label="Conversion Rate" value={`${conversionRate.toFixed(1)}%`} sub={`${confirmed} confirmed`} icon={CheckCircle} color="linear-gradient(135deg,#10b981,#059669)" />
+        <MetricCard label="Filtered Calls"  value={filteredCalls.length}        sub="in selected range"  icon={Phone}        color="linear-gradient(135deg,#2dd4bf,#0f766e)" />
+        <MetricCard label="Unique Patients" value={uniquePhones}                sub="distinct phones"    icon={Users}        color="linear-gradient(135deg,#38bdf8,#0369a1)" />
+        <MetricCard label="Avg Duration"    value={fmtDuration(Math.round(totalDuration / Math.max(filteredCalls.length, 1)))} sub="per call"  icon={Clock}        color="linear-gradient(135deg,#818cf8,#4338ca)" />
+        <MetricCard label="Conversion Rate" value={`${conversionRate.toFixed(1)}%`} sub={`${confirmed} confirmed`} icon={CheckCircle} color="linear-gradient(135deg,#34d399,#059669)" />
       </div>
 
       {/* Conversion progress bar */}
       <div className="glass-card p-5">
-        <div className="flex justify-between text-xs text-white/50 mb-3">
-          <span className="font-semibold text-white/70">Booking Conversion Rate</span>
-          <span className="font-bold text-white">{conversionRate.toFixed(1)}%</span>
+        <div className="flex justify-between text-xs text-slate-500 dark:text-white/50 mb-3">
+          <span className="font-semibold text-slate-500 dark:text-white/70">Booking Conversion Rate</span>
+          <span className="font-bold text-slate-900 dark:text-white">{conversionRate.toFixed(1)}%</span>
         </div>
-        <div className="h-3 rounded-full bg-white/10 overflow-hidden">
+        <div className="h-3 rounded-full bg-slate-900/5 dark:bg-white/10 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-1000"
-            style={{ width: `${conversionRate}%`, background: 'linear-gradient(90deg, #6366f1, #a855f7, #10b981)' }}
+            style={{ width: `${conversionRate}%`, background: 'linear-gradient(90deg, #0ea5e9, #2dd4bf, #14b8a6)' }}
           />
         </div>
-        <div className="flex justify-between text-[10px] text-white/25 mt-2">
+        <div className="flex justify-between text-[10px] text-slate-500 dark:text-white/25 mt-2">
           <span>{confirmed} confirmed</span>
           <span>{filteredCalls.length - confirmed} not booked</span>
         </div>
@@ -253,16 +255,16 @@ export function Reports() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="section-title">Daily Call Volume</h2>
-                <p className="text-xs text-white/40 mt-0.5">Last {dateRange}</p>
+                <p className="text-xs text-slate-500 dark:text-white/40 mt-0.5">Last {dateRange}</p>
               </div>
               <TrendingUp size={14} className="text-emerald-400" />
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={dailyVolume} barSize={20}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(99,102,241,0.1)" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(16,185,129,0.1)" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99,102,241,0.08)' }} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(16,185,129,0.08)' }} />
                 <Bar dataKey="calls" radius={[4, 4, 0, 0]}>
                   {dailyVolume.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} fillOpacity={0.85} />
@@ -291,8 +293,8 @@ export function Reports() {
               {statusDist.map((d, i) => (
                 <div key={i} className="flex items-center gap-1.5 text-[11px]">
                   <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                  <span className="text-white/60 capitalize">{d.name}</span>
-                  <span className="text-white/90 font-bold">{d.value}</span>
+                  <span className="text-slate-500 dark:text-white/60 capitalize">{d.name}</span>
+                  <span className="text-slate-500 dark:text-white/90 font-bold">{d.value}</span>
                 </div>
               ))}
             </div>
@@ -305,13 +307,13 @@ export function Reports() {
         <h2 className="section-title mb-4">Call Duration Histogram</h2>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={durationBuckets} barSize={40}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(99,102,241,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(16,185,129,0.1)" />
             <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false} allowDecimals={false} />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(99,102,241,0.08)' }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(16,185,129,0.08)' }} />
             <Bar dataKey="calls" radius={[4, 4, 0, 0]}>
               {durationBuckets.map((_, i) => (
-                <Cell key={i} fill="#6366f1" fillOpacity={0.7 + i * 0.06} />
+                <Cell key={i} fill="#14b8a6" fillOpacity={0.7 + i * 0.06} />
               ))}
             </Bar>
           </BarChart>
@@ -331,7 +333,7 @@ export function Reports() {
             <span>Export PDF Report</span>
           </button>
         </div>
-        <p className="text-[11px] text-white/30 mt-3">
+        <p className="text-[11px] text-slate-500 dark:text-white/30 mt-3">
           Exports include: call ID, phone, patient name, date, duration, status, treatment, and appointment details.
         </p>
       </div>

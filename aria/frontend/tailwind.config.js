@@ -8,36 +8,39 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand palette
+        // Brand palette (Refined Medical Teal/Blue)
         brand: {
-          50:  '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
+          50:  '#f0fdfa',
+          100: '#ccfbf1',
+          200: '#99f6e4',
+          300: '#5eead4',
+          400: '#2dd4bf',
+          500: '#14b8a6', // Teal 500
+          600: '#0d9488',
+          700: '#0f766e',
+          800: '#115e59',
+          900: '#134e4a',
         },
-        // Dark surface palette
+        // Premium Dark Surface palette (Zinc)
         surface: {
-          50:  '#f8fafc',
-          100: '#f1f5f9',
-          900: '#0A0F1E',
-          800: '#0D1526',
-          700: '#111827',
-          600: '#1a2235',
-          500: '#1e2a3d',
-          400: '#243047',
+          50:  '#fafafa',
+          100: '#f4f4f5',
+          200: '#e4e4e7',
+          300: '#d4d4d8',
+          400: '#a1a1aa',
+          500: '#71717a',
+          600: '#52525b',
+          700: '#3f3f46',
+          800: '#27272a',
+          900: '#18181b', // Main background
+          950: '#09090b', // Deepest background
         },
         // Accent colors
         accent: {
-          purple: '#a855f7',
-          pink:   '#ec4899',
-          cyan:   '#06b6d4',
-          green:  '#10b981',
+          blue:   '#3b82f6',
+          purple: '#8b5cf6',
+          teal:   '#14b8a6',
+          green:  '#22c55e',
           orange: '#f59e0b',
           red:    '#ef4444',
         }
@@ -67,8 +70,8 @@ export default {
       boxShadow: {
         'glass':     '0 8px 32px rgba(0, 0, 0, 0.4)',
         'glass-lg':  '0 20px 60px rgba(0, 0, 0, 0.5)',
-        'glow':      '0 0 20px rgba(99, 102, 241, 0.4)',
-        'glow-sm':   '0 0 10px rgba(99, 102, 241, 0.3)',
+        'glow':      '0 0 20px rgba(16, 185, 129, 0.4)',
+        'glow-sm':   '0 0 10px rgba(16, 185, 129, 0.3)',
       },
     },
   },

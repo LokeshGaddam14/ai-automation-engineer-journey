@@ -6,6 +6,8 @@ import {
 import type { LiveCall, QualityMetrics } from '../types';
 import { exportLiveCallTranscriptToPDF } from '../utils/export';
 import { useStore } from '../store/useStore';
+import { usePageEntrance } from '../hooks/useGsap';
+import { API_BASE_URL, WS_BASE_URL } from '../services/api';
 
 // ── Mock Data Seed ──────────────────────────────────────────────────────────────
 function makeMockCall(): LiveCall {
@@ -34,7 +36,7 @@ function QualityBadge({ metrics }: { metrics: QualityMetrics }) {
     good: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
     fair: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
     poor: 'text-red-400 bg-red-500/10 border-red-500/30',
-    unknown: 'text-white/40 bg-white/5 border-white/10',
+    unknown: 'text-slate-500 dark:text-white/40 bg-slate-900/5 dark:bg-white/5 border-slate-900/10 dark:border-white/10',
   };
   const cls = colors[metrics.audio_quality] ?? colors.unknown;
   return (
@@ -57,16 +59,16 @@ function TranscriptBubble({ role, text, timestamp }: { role: 'agent' | 'patient'
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
           isAgent
-            ? 'bg-indigo-500/15 border border-indigo-500/20 text-white/90'
-            : 'bg-white/[0.07] border border-white/10 text-white/80'
+            ? 'bg-indigo-500/15 border border-indigo-500/20 text-slate-500 dark:text-white/90'
+            : 'bg-slate-900/5 dark:bg-white/[0.07] border border-slate-900/10 dark:border-white/10 text-slate-500 dark:text-white/80'
         }`}
       >
         <div className="flex items-center gap-1.5 mb-1.5">
-          {isAgent ? <Mic size={9} className="text-indigo-400" /> : <User size={9} className="text-white/50" />}
-          <span className="font-bold uppercase text-[9px] tracking-widest text-white/40">
+          {isAgent ? <Mic size={9} className="text-indigo-400" /> : <User size={9} className="text-slate-500 dark:text-white/50" />}
+          <span className="font-bold uppercase text-[9px] tracking-widest text-slate-500 dark:text-white/40">
             {isAgent ? 'Aria' : 'Patient'}
           </span>
-          <span className="ml-auto text-[9px] text-white/20">
+          <span className="ml-auto text-[9px] text-slate-500 dark:text-white/20">
             {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
@@ -88,7 +90,7 @@ function CallCard({
   const statusColors: Record<LiveCall['status'], string> = {
     ringing: 'text-amber-400',
     active:  'text-emerald-400',
-    ended:   'text-white/30',
+    ended:   'text-slate-500 dark:text-white/30',
   };
   return (
     <button
@@ -96,25 +98,25 @@ function CallCard({
       className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
         selected
           ? 'bg-indigo-500/15 border-indigo-500/40'
-          : 'bg-white/[0.03] border-white/8 hover:border-indigo-500/20 hover:bg-white/[0.05]'
+          : 'bg-slate-900/5 dark:bg-white/[0.03] border-slate-900/10 dark:border-white/8 hover:border-indigo-500/20 hover:bg-slate-900/5 dark:bg-white/[0.05]'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div
             className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-              call.status === 'ended' ? 'bg-white/5' : 'bg-indigo-500/20'
+              call.status === 'ended' ? 'bg-slate-900/5 dark:bg-white/5' : 'bg-indigo-500/20'
             }`}
           >
             {call.status === 'ended' ? (
-              <PhoneOff size={14} className="text-white/30" />
+              <PhoneOff size={14} className="text-slate-500 dark:text-white/30" />
             ) : (
               <Phone size={14} className="text-indigo-400" />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white/90 truncate">{call.patient_phone}</p>
-            <p className="text-[11px] text-white/35 font-mono truncate">{call.call_id.slice(0, 22)}…</p>
+            <p className="text-sm font-semibold text-slate-500 dark:text-white/90 truncate">{call.patient_phone}</p>
+            <p className="text-[11px] text-slate-500 dark:text-white/35 font-mono truncate">{call.call_id.slice(0, 22)}…</p>
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -127,10 +129,10 @@ function CallCard({
       </div>
       <div className="mt-3 flex items-center gap-3">
         <QualityBadge metrics={call.quality} />
-        <span className="text-[10px] text-white/30 flex items-center gap-1">
+        <span className="text-[10px] text-slate-500 dark:text-white/30 flex items-center gap-1">
           <Signal size={9} /> {call.quality.latency_ms}ms
         </span>
-        <span className="text-[10px] text-white/30 flex items-center gap-1">
+        <span className="text-[10px] text-slate-500 dark:text-white/30 flex items-center gap-1">
           <Zap size={9} /> {call.quality.bandwidth_mbps.toFixed(2)} Mbps
         </span>
       </div>
@@ -163,7 +165,7 @@ export function LiveCalls() {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     setWsStatus('connecting');
 
-    const ws = new WebSocket('ws://localhost:8000/ws/live-calls');
+    const ws = new WebSocket(`${WS_BASE_URL}/ws/live-calls`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -221,8 +223,10 @@ export function LiveCalls() {
 
   const activeCount = calls.filter((c) => c.status === 'active' || c.status === 'ringing').length;
 
+  const pageRef = usePageEntrance();
+
   return (
-    <div className="p-6 h-full flex flex-col gap-4 min-h-0">
+    <div ref={pageRef} className="p-6 h-full flex flex-col gap-4 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div>
@@ -235,7 +239,7 @@ export function LiveCalls() {
               </span>
             )}
           </h1>
-          <p className="text-sm text-white/40 mt-1">Real-time call monitoring via WebSocket</p>
+          <p className="text-sm text-slate-500 dark:text-white/40 mt-1">Real-time call monitoring via WebSocket</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -245,7 +249,7 @@ export function LiveCalls() {
               ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
               : wsStatus === 'connecting'
               ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-              : 'text-white/30 bg-white/5 border-white/10'
+              : 'text-slate-500 dark:text-white/30 bg-slate-900/5 dark:bg-white/5 border-slate-900/10 dark:border-white/10'
           }`}>
             {wsStatus === 'connected' ? <Wifi size={12} /> : wsStatus === 'connecting' ? <Activity size={12} className="animate-pulse" /> : <WifiOff size={12} />}
             {wsStatus}
@@ -267,7 +271,7 @@ export function LiveCalls() {
       {useMock && (
         <div className="glass-card-flat border border-amber-500/30 px-4 py-2.5 rounded-xl text-xs text-amber-400 flex items-center gap-2 flex-shrink-0">
           <Zap size={12} />
-          Showing mock demo data. Connect Bolna to see real calls. Set <code className="px-1 py-0.5 rounded bg-amber-500/10">BOLNA_WEBHOOK_URL=http://localhost:8000/webhooks/bolna</code> in your Bolna agent.
+          Showing mock demo data. Connect Bolna to see real calls. Set <code className="px-1 py-0.5 rounded bg-amber-500/10">BOLNA_WEBHOOK_URL={API_BASE_URL}/webhooks/bolna</code> in your Bolna agent.
         </div>
       )}
 
@@ -278,8 +282,8 @@ export function LiveCalls() {
             <Phone size={28} className="text-indigo-400 opacity-50" />
           </div>
           <div>
-            <p className="text-white/50 font-medium">No active calls</p>
-            <p className="text-xs text-white/30 mt-1">Waiting for incoming Bolna voice calls…</p>
+            <p className="text-slate-500 dark:text-white/50 font-medium">No active calls</p>
+            <p className="text-xs text-slate-500 dark:text-white/30 mt-1">Waiting for incoming Bolna voice calls…</p>
           </div>
           <button onClick={loadMockData} className="btn-primary">
             <Zap size={14} /> Load Demo Data
@@ -292,7 +296,7 @@ export function LiveCalls() {
         <div className="flex-1 grid grid-cols-[300px_1fr] gap-4 min-h-0">
           {/* Call list */}
           <div className="flex flex-col gap-2 overflow-y-auto pr-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30 px-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-white/30 px-1">
               {calls.length} call{calls.length !== 1 ? 's' : ''}
             </p>
             {calls.map((call) => (
@@ -312,22 +316,22 @@ export function LiveCalls() {
               <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: 'rgba(99,102,241,0.1)' }}>
                 <div>
                   <h3 className="section-title">{selectedCall.patient_phone}</h3>
-                  <p className="text-[11px] text-white/35 font-mono mt-0.5">{selectedCall.call_id}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-white/35 font-mono mt-0.5">{selectedCall.call_id}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Metrics */}
                   <div className="flex items-center gap-3 mr-4">
                     <div className="text-center">
-                      <p className="text-[9px] text-white/30 uppercase tracking-wide">Latency</p>
-                      <p className="text-xs font-bold text-white/80">{selectedCall.quality.latency_ms}ms</p>
+                      <p className="text-[9px] text-slate-500 dark:text-white/30 uppercase tracking-wide">Latency</p>
+                      <p className="text-xs font-bold text-slate-500 dark:text-white/80">{selectedCall.quality.latency_ms}ms</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[9px] text-white/30 uppercase tracking-wide">BW</p>
-                      <p className="text-xs font-bold text-white/80">{selectedCall.quality.bandwidth_mbps.toFixed(2)} Mbps</p>
+                      <p className="text-[9px] text-slate-500 dark:text-white/30 uppercase tracking-wide">BW</p>
+                      <p className="text-xs font-bold text-slate-500 dark:text-white/80">{selectedCall.quality.bandwidth_mbps.toFixed(2)} Mbps</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[9px] text-white/30 uppercase tracking-wide">Duration</p>
-                      <p className="text-xs font-bold text-white/80 flex items-center gap-1">
+                      <p className="text-[9px] text-slate-500 dark:text-white/30 uppercase tracking-wide">Duration</p>
+                      <p className="text-xs font-bold text-slate-500 dark:text-white/80 flex items-center gap-1">
                         <Clock size={9} />
                         <Duration seconds={selectedCall.duration} />
                       </p>
@@ -359,7 +363,7 @@ export function LiveCalls() {
               {/* Transcript */}
               <div ref={transcriptRef} className="flex-1 overflow-y-auto p-5 space-y-3">
                 {selectedCall.transcript.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full gap-2 text-white/30">
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-500 dark:text-white/30">
                     <Mic size={24} className="opacity-40" />
                     <p className="text-sm">Waiting for conversation…</p>
                   </div>
@@ -379,7 +383,7 @@ export function LiveCalls() {
               </div>
             </div>
           ) : (
-            <div className="glass-card flex items-center justify-center text-white/30">
+            <div className="glass-card flex items-center justify-center text-slate-500 dark:text-white/30">
               <p className="text-sm">Select a call to view transcript</p>
             </div>
           )}
