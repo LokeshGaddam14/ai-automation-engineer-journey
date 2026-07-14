@@ -14,7 +14,7 @@ Why Redis for voice calls?
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -124,7 +124,7 @@ class RedisSessionManager:
         session = {
             "call_id": call_id,
             "patient_phone": patient_phone,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "ended_at": None,
             "state": "greeting",
             "extracted_data": {},
@@ -183,7 +183,7 @@ class RedisSessionManager:
         turn = {
             "role": role,
             "content": content,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         if extracted_data:
             turn["extracted_data"] = extracted_data
@@ -202,7 +202,7 @@ class RedisSessionManager:
         """
         session = self.get_session(call_id)
         if session:
-            session["ended_at"] = datetime.utcnow().isoformat()
+            session["ended_at"] = datetime.now(timezone.utc).isoformat()
             self._delete(f"session:{call_id}")
             print(f"📴 Session ended: {call_id} | Turns: {len(session['turns'])}")
         return session

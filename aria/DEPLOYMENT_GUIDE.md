@@ -149,6 +149,9 @@ ngrok http 8000
 ## Post-Deployment Verification
 
 ```bash
+# Check Admin Dashboard
+open https://your-app.railway.app/dashboard
+
 # Health check
 curl https://your-app.railway.app/health
 

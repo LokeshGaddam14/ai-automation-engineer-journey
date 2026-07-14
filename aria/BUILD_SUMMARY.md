@@ -151,7 +151,7 @@ Redis is optimized for real-time reads. Postgres is optimized for queries and du
 
 ### Week 18-20 (Capstone)
 - [ ] Connect to real Bolna agent (live voice)
-- [ ] Build admin dashboard (React/Next.js)
-- [ ] Add analytics visualizations
+- [x] Build admin dashboard (React) & API Integration
+- [x] Add analytics visualizations (Chart.js + API endpoints)
 - [ ] Deploy to Railway/Render production
 - [ ] Create portfolio presentation

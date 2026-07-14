@@ -12,7 +12,7 @@ Run:
 import json
 import pytest
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch, PropertyMock
 
 
@@ -45,8 +45,8 @@ def sample_session():
     return {
         "call_id":       "call_TEST_001",
         "patient_phone": "+916302008804",
-        "started_at":    datetime.utcnow().isoformat(),
-        "ended_at":      datetime.utcnow().isoformat(),
+        "started_at":    datetime.now(timezone.utc).isoformat(),
+        "ended_at":      datetime.now(timezone.utc).isoformat(),
         "callStatus":    "completed",
         "agentId":       "aria-dental-v1",
         "turns": [
@@ -298,14 +298,14 @@ class TestGoogleCalendarAgent:
 
     def test_calendar_resolve_date_tomorrow(self, cal):
         """'tomorrow' resolves to tomorrow's date."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         result = cal._resolve_date("tomorrow")
         expected = datetime.now() + timedelta(days=1)
         assert result.date() == expected.date()
 
     def test_calendar_resolve_date_telugu(self, cal):
         """Telugu 'రేపు' resolves to tomorrow."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         result = cal._resolve_date("రేపు")
         expected = datetime.now() + timedelta(days=1)
         assert result.date() == expected.date()

@@ -10,7 +10,7 @@ Run from the project root:
 import sys
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import random
 import uuid
 
@@ -78,7 +78,7 @@ def seed():
 
     print("🌱 Seeding demo call records...")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     records_added = 0
 
     for i in range(25):

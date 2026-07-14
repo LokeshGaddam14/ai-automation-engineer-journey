@@ -14,7 +14,7 @@ Architecture:
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -51,7 +51,7 @@ class CallRecord(Base):
 
     call_id          = Column(String(100), primary_key=True)
     patient_phone    = Column(String(20),  nullable=False, index=True)
-    started_at       = Column(DateTime,    default=datetime.utcnow)
+    started_at       = Column(DateTime,    default=lambda: datetime.now(timezone.utc))
     ended_at         = Column(DateTime,    nullable=True)
     duration_secs    = Column(Integer,     nullable=True)
     language         = Column(String(20),  default="English")
@@ -87,7 +87,7 @@ class AppointmentReminder(Base):
     call_id       = Column(String(100), nullable=False)
     patient_phone = Column(String(20),  nullable=False)
     channel       = Column(String(20),  nullable=False)  # email/whatsapp/sms
-    sent_at       = Column(DateTime,    default=datetime.utcnow)
+    sent_at       = Column(DateTime,    default=lambda: datetime.now(timezone.utc))
     status        = Column(String(20),  default="sent")
 
 
@@ -141,10 +141,10 @@ class PostgresManager:
         """
         with Session(self.engine) as db:
             started = datetime.fromisoformat(
-                session_dict.get("started_at", datetime.utcnow().isoformat())
+                session_dict.get("started_at", datetime.now(timezone.utc).isoformat())
             )
             ended_str = session_dict.get("ended_at")
-            ended = datetime.fromisoformat(ended_str) if ended_str else datetime.utcnow()
+            ended = datetime.fromisoformat(ended_str) if ended_str else datetime.now(timezone.utc)
             duration = max(0, int((ended - started).total_seconds()))
 
             extracted = session_dict.get("extracted_data", {})
@@ -188,8 +188,8 @@ class PostgresManager:
         session_dict = {
             "call_id": call_id,
             "patient_phone": phone,
-            "started_at": datetime.utcnow().isoformat(),
-            "ended_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
             "extracted_data": {
                 "name": name,
                 "phone": phone,

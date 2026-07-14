@@ -13,7 +13,7 @@ Flow:
 import json
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from aria.memory.redis_manager import RedisSessionManager
@@ -192,8 +192,8 @@ class UnifiedCallHandler:
             final_session = {
                 "call_id":       call_id,
                 "patient_phone": bolna_payload.get("patientPhone", ""),
-                "started_at":    bolna_payload.get("createdAt", datetime.utcnow().isoformat()),
-                "ended_at":      bolna_payload.get("loggedAt", datetime.utcnow().isoformat()),
+                "started_at":    bolna_payload.get("createdAt", datetime.now(timezone.utc).isoformat()),
+                "ended_at":      bolna_payload.get("loggedAt", datetime.now(timezone.utc).isoformat()),
                 "callStatus":    bolna_payload.get("callStatus", "completed"),
                 "agentId":       bolna_payload.get("agentId", ""),
                 "turns":         [],

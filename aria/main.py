@@ -24,7 +24,7 @@ Endpoints:
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -189,7 +189,7 @@ async def health_check():
         "status": "healthy",
         "service": "Aria Voice Receptionist API",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "components": {
             "memory":       "redis + postgres",
             "agents":       "langgraph",
