@@ -582,6 +582,96 @@ async def search_calls(q: str = "", limit: int = 20):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/analytics/sync-bolna", tags=["Analytics"])
+async def sync_bolna_calls(background_tasks: BackgroundTasks):
+    """
+    Pull all real call executions from Bolna AI and sync them into the local database.
+    Safe to call repeatedly — existing records are updated, new ones inserted.
+    """
+    import requests as _requests
+
+    bolna_key   = os.getenv("BOLNA_API_KEY", "")
+    bolna_agent = os.getenv("BOLNA_AGENT_ID", "")
+
+    if not bolna_key or not bolna_agent:
+        raise HTTPException(status_code=503, detail="BOLNA_API_KEY or BOLNA_AGENT_ID not configured")
+
+    headers_bolna = {"Authorization": f"Bearer {bolna_key}"}
+    try:
+        resp = _requests.get(
+            f"https://api.bolna.dev/v1/agent/{bolna_agent}/executions",
+            headers=headers_bolna,
+            params={"page_number": 1, "page_size": 100},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        executions = resp.json()
+        if not isinstance(executions, list):
+            executions = executions.get("data", [])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Bolna API error: {e}")
+
+    handler = get_handler()
+    inserted = 0
+    updated  = 0
+
+    for c in executions:
+        call_id = c.get("id", "")
+        if not call_id:
+            continue
+
+        phone    = c.get("to_number") or c.get("recipient_phone_number") or "unknown"
+        status   = c.get("call_status") or c.get("status") or "completed"
+        duration = int(c.get("conversation_duration") or 0)
+        started  = c.get("created_at") or c.get("started_at") or datetime.now(timezone.utc).isoformat()
+        ended    = c.get("ended_at") or c.get("updated_at") or started
+        agent_id = c.get("agent_id", bolna_agent)
+
+        transcript_raw = c.get("transcript", "") or ""
+        turns = []
+        for line in transcript_raw.split("\n"):
+            line = line.strip()
+            if line.startswith("assistant:"):
+                turns.append({"role": "agent",   "content": line[10:].strip(), "timestamp": started})
+            elif line.startswith("user:"):
+                turns.append({"role": "patient", "content": line[5:].strip(),  "timestamp": started})
+
+        booking_status = "confirmed" if status == "completed" and len(turns) > 2 else "no_booking"
+
+        session_dict = {
+            "call_id":       call_id,
+            "patient_phone": phone,
+            "started_at":    started,
+            "ended_at":      ended,
+            "callStatus":    status,
+            "agentId":       agent_id,
+            "turns":         turns,
+            "extracted_data": {"booking_status": booking_status, "duration": duration},
+        }
+
+        try:
+            existing = handler.postgres.get_call(call_id)
+            if existing:
+                updated += 1
+            else:
+                handler.postgres.save_call(session_dict)
+                inserted += 1
+        except Exception:
+            try:
+                handler.postgres.save_call(session_dict)
+                inserted += 1
+            except Exception:
+                pass
+
+    await notify_call_changed()
+    return {
+        "synced": len(executions),
+        "inserted": inserted,
+        "updated":  updated,
+        "message":  f"Synced {len(executions)} calls from Bolna AI",
+    }
+
 # ── Active call store & real-time broadcast helpers ────────────────────────────
 
 _active_calls: Dict[str, Dict] = {}    # call_id → call state dict

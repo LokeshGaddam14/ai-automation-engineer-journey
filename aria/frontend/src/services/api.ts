@@ -139,9 +139,13 @@ export const analyticsAPI = {
     return res.data;
   },
 
-  // Backend: GET /analytics/search?q=<query>&limit=<n>
   search: async (q = '', limit = 20): Promise<SearchResult> => {
     const res = await api.get('/analytics/search', { params: { q, limit } });
+    return res.data;
+  },
+
+  syncBolna: async (): Promise<{ synced: number; inserted: number; updated: number; message: string }> => {
+    const res = await api.post('/analytics/sync-bolna');
     return res.data;
   },
 };

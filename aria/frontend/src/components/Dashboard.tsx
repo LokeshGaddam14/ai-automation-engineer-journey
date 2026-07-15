@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   Phone, Users, Clock, CheckCircle, TrendingUp,
-  RefreshCw, Activity, Zap,
+  RefreshCw, Activity, Zap, CloudDownload,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -134,7 +134,8 @@ function AnimatedChartCard({ children }: { children: React.ReactNode }) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export function Dashboard() {
   const pageRef = usePageEntrance();
-  const { liveStats, activeCalls } = useStore();
+  const { liveStats, activeCalls, showToast } = useStore();
+  const [syncing, setSyncing] = useState(false);
 
   const { data: polledStats, loading, error, refetch } = usePolling(
     () => analyticsAPI.getStats(),
@@ -143,6 +144,20 @@ export function Dashboard() {
 
   const stats = liveStats || polledStats;
   const activeCount = stats?.active_calls ?? activeCalls.length;
+
+  const handleSyncBolna = async () => {
+    setSyncing(true);
+    try {
+      const result = await analyticsAPI.syncBolna();
+      showToast(`✅ Synced ${result.synced} calls from Bolna AI (${result.inserted} new)`, 'success');
+      refetch();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(`Bolna sync failed: ${msg}`, 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Build chart data from stats
   const buildChartData = (s: Analytics) => {
@@ -179,14 +194,25 @@ export function Dashboard() {
             )}
           </p>
         </div>
-        <button
-          onClick={refetch}
-          disabled={loading && !stats}
-          className="btn-secondary"
-        >
-          <RefreshCw size={14} className={loading && !stats ? 'animate-spin' : ''} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncBolna}
+            disabled={syncing}
+            className="btn-secondary"
+            title="Pull real call logs from Bolna AI into database"
+          >
+            <CloudDownload size={14} className={syncing ? 'animate-pulse' : ''} />
+            <span>{syncing ? 'Syncing…' : 'Sync Bolna'}</span>
+          </button>
+          <button
+            onClick={refetch}
+            disabled={loading && !stats}
+            className="btn-secondary"
+          >
+            <RefreshCw size={14} className={loading && !stats ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Error banner */}
