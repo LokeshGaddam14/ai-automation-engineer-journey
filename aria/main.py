@@ -637,7 +637,20 @@ async def sync_bolna_calls(background_tasks: BackgroundTasks):
             elif line.startswith("user:"):
                 turns.append({"role": "patient", "content": line[5:].strip(),  "timestamp": started})
 
-        booking_status = "confirmed" if status == "completed" and len(turns) > 2 else "no_booking"
+        full_agent_text = ' '.join([t["content"] for t in turns if t["role"] == "agent"]).lower()
+        confirmed_phrases = [
+            "కన్ఫర్మ్ అయింది", "బుక్ చేసుకున్నాను", "అపాయింట్‌మెంట్ బుక్", 
+            "అపాయింట్మెంట్ కోసం ధన్యవాదాలు", "నిర్ధారించబడింది",
+            "appointment confirmed", "appointment booked", "successfully booked",
+        ]
+        
+        user_turns = len([t for t in turns if t["role"] == "patient"])
+        if any(p in full_agent_text for p in confirmed_phrases):
+            booking_status = "confirmed"
+        elif duration >= 60 and user_turns >= 3:
+            booking_status = "confirmed"
+        else:
+            booking_status = "no_booking"
 
         # Deep extract helper
         def get_extracted_val(ex_data: dict, key: str) -> str:

@@ -153,9 +153,10 @@ class PostgresManager:
             )
             ended_str = session_dict.get("ended_at")
             ended = datetime.fromisoformat(ended_str) if ended_str else datetime.now(timezone.utc)
-            duration = max(0, int((ended - started).total_seconds()))
-
             extracted = session_dict.get("extracted_data", {})
+            duration = int(extracted.get("duration", 0))
+            if duration == 0:
+                duration = max(0, int((ended - started).total_seconds()))
 
             record = CallRecord(
                 call_id          = session_dict["call_id"],
