@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Page } from '../types';
+import type { Page, LiveCall, Analytics } from '../types';
 
 interface AppStore {
   // Navigation
@@ -13,6 +13,15 @@ interface AppStore {
   // WebSocket connection status
   wsConnected: boolean;
   setWsConnected: (connected: boolean) => void;
+
+  // Real-time active calls & stats from WebSocket
+  activeCalls: LiveCall[];
+  setActiveCalls: (calls: LiveCall[]) => void;
+  updateActiveCall: (call: LiveCall) => void;
+  removeActiveCall: (callId: string) => void;
+
+  liveStats: Analytics | null;
+  setLiveStats: (stats: Analytics | null) => void;
 
   // Selected call for transcript view
   selectedCallId: string | null;
@@ -41,6 +50,24 @@ export const useStore = create<AppStore>((set) => ({
 
   wsConnected: false,
   setWsConnected: (connected) => set({ wsConnected: connected }),
+
+  activeCalls: [],
+  setActiveCalls: (calls) => set({ activeCalls: calls }),
+  updateActiveCall: (call) =>
+    set((s) => ({
+      activeCalls: s.activeCalls.some((c) => c.call_id === call.call_id)
+        ? s.activeCalls.map((c) => (c.call_id === call.call_id ? call : c))
+        : [call, ...s.activeCalls],
+    })),
+  removeActiveCall: (callId) =>
+    set((s) => ({
+      activeCalls: s.activeCalls.map((c) =>
+        c.call_id === callId ? { ...c, status: 'ended' as const } : c
+      ),
+    })),
+
+  liveStats: null,
+  setLiveStats: (stats) => set({ liveStats: stats }),
 
   selectedCallId: null,
   setSelectedCallId: (id) => set({ selectedCallId: id }),

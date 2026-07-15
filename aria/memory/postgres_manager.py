@@ -33,10 +33,14 @@ except ImportError:
     pass
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./aria_calls.db"  # SQLite fallback — zero setup!
-)
+_root_dir = Path(__file__).parent.parent.parent
+_default_db_path = _root_dir / "aria_calls.db"
+_env_db_url = os.getenv("DATABASE_URL", "")
+if not _env_db_url or _env_db_url in ["sqlite:///./aria_calls.db", "sqlite:///aria_calls.db"]:
+    DATABASE_URL = f"sqlite:///{_default_db_path.resolve().as_posix()}"
+else:
+    DATABASE_URL = _env_db_url
+
 
 
 # ── ORM Models ─────────────────────────────────────────────────────────────────
@@ -105,6 +109,8 @@ class PostgresManager:
     """
 
     def __init__(self, db_url: str = DATABASE_URL):
+        if db_url in ["sqlite:///./aria_calls.db", "sqlite:///aria_calls.db"]:
+            db_url = f"sqlite:///{_default_db_path.resolve().as_posix()}"
         connect_args = {}
         if db_url.startswith("sqlite"):
             connect_args = {"check_same_thread": False}
@@ -123,6 +129,15 @@ class PostgresManager:
                 conn.execute(text("ALTER TABLE call_records ADD COLUMN followup_sent BOOLEAN DEFAULT FALSE;"))
         except Exception:
             pass
+
+        # Auto-seed demo data if table is empty so dashboard has rich live data on startup
+        try:
+            with Session(self.engine) as db:
+                if db.query(CallRecord).count() == 0:
+                    from aria.seed_demo_data import seed
+                    seed(self)
+        except Exception as e:
+            print(f"[PostgresManager] Auto-seed error: {e}")
 
         db_type = "SQLite" if db_url.startswith("sqlite") else \
                   "Supabase" if "supabase" in db_url else "PostgreSQL"
@@ -355,6 +370,7 @@ class PostgresManager:
             return {
                 # Frontend-compatible names
                 "total_calls":            total_calls,
+                "completed_calls":        total_calls,
                 "confirmed_bookings":     confirmed,
                 "avg_duration_seconds":   round(float(avg_duration), 1),
                 "total_duration_seconds": round(float(total_duration), 1),

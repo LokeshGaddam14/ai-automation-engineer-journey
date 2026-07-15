@@ -26,7 +26,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 # Auto-load .env from project root
 try:
@@ -238,6 +238,18 @@ async def start_call(req: StartCallRequest):
         else:
             greeting = greetings.get(language, greetings["English"])
 
+        if req.call_id not in _active_calls:
+            _active_calls[req.call_id] = {
+                "call_id": req.call_id,
+                "patient_phone": req.patient_phone,
+                "started_at": datetime.now().isoformat(),
+                "duration": 0,
+                "status": "active",
+                "transcript": [],
+                "quality": {"audio_quality": "good", "latency_ms": 25, "bandwidth_mbps": 1.2},
+            }
+            await notify_call_changed(req.call_id)
+
         return StartCallResponse(
             call_id        = req.call_id,
             status         = "active",
@@ -268,6 +280,19 @@ async def process_input(req: ProcessInputRequest):
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
 
+        if req.call_id in _active_calls:
+            _active_calls[req.call_id]["transcript"].append({
+                "role": "patient",
+                "text": req.patient_input,
+                "timestamp": datetime.now().isoformat()
+            })
+            _active_calls[req.call_id]["transcript"].append({
+                "role": "agent",
+                "text": result.get("response", ""),
+                "timestamp": datetime.now().isoformat()
+            })
+            await notify_call_changed(req.call_id)
+
         return ProcessInputResponse(
             call_id           = req.call_id,
             response          = result.get("response", ""),
@@ -296,6 +321,12 @@ async def end_call(req: EndCallRequest, background_tasks: BackgroundTasks):
 
         if "error" in summary:
             raise HTTPException(status_code=404, detail=summary["error"])
+
+        if req.call_id in _active_calls:
+            _active_calls[req.call_id]["status"] = "ended"
+            await broadcast_live_update("call_ended", {"call_id": req.call_id})
+            _active_calls.pop(req.call_id, None)
+            await notify_call_changed()
 
         return EndCallResponse(
             call_id    = req.call_id,
@@ -506,6 +537,7 @@ async def book_calendar_appointment(req: BookRequest):
                 booking_id = b_id,
                 status     = "confirmed",
             )
+            await notify_call_changed()
             return {"status": "confirmed", "booking_id": b_id, "calendar_event": result}
         else:
             return {"status": "failed", "message": result.get("message", "Unknown error")}
@@ -529,14 +561,10 @@ async def get_todays_schedule():
 @app.get("/analytics/stats", tags=["Analytics"])
 async def get_stats():
     """
-    Get call statistics and analytics.
-
-    Returns: total calls, booking rate, language breakdown, avg duration.
+    Get call statistics and analytics, merged with live active call metrics.
     """
     try:
-        handler = get_handler()
-        stats = handler.postgres.get_stats()
-        return stats
+        return get_live_stats_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -554,9 +582,40 @@ async def search_calls(q: str = "", limit: int = 20):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── Active call store (in-memory, per server instance) ────────────────────────
+# ── Active call store & real-time broadcast helpers ────────────────────────────
 
 _active_calls: Dict[str, Dict] = {}    # call_id → call state dict
+
+async def broadcast_live_update(msg_type: str, data: Any):
+    """Broadcast a JSON message to all connected real-time dashboard clients."""
+    msg = json.dumps({"type": msg_type, "data": data})
+    for ws in list(active_ws_connections):
+        try:
+            await ws.send_text(msg)
+        except Exception:
+            pass
+
+def get_live_stats_dict() -> Dict:
+    """Get merged live stats combining Postgres archival records and active in-memory calls."""
+    try:
+        handler = get_handler()
+        stats = handler.postgres.get_stats()
+        active_calls_list = [c for c in _active_calls.values() if c.get("status") != "ended"]
+        active_count = len(active_calls_list)
+        stats["active_calls"] = active_count
+        stats["completed_calls"] = stats.get("total_calls", 0)
+        stats["total_calls"] = stats["completed_calls"] + active_count
+        return stats
+    except Exception as e:
+        print(f"[get_live_stats_dict] Error: {e}")
+        return {}
+
+async def notify_call_changed(call_id: Optional[str] = None):
+    """Broadcast updated active calls list and refreshed live stats."""
+    if call_id and call_id in _active_calls:
+        await broadcast_live_update("call_update", _active_calls[call_id])
+    await broadcast_live_update("active_calls", list(_active_calls.values()))
+    await broadcast_live_update("stats_update", get_live_stats_dict())
 
 
 # ── Bolna Webhooks ─────────────────────────────────────────────────────────────
@@ -604,12 +663,7 @@ async def bolna_call_started(request: Request):
         _active_calls[call_id] = call_state
 
         # Broadcast to dashboard
-        msg = json.dumps({"type": "call_update", "data": call_state})
-        for ws in list(active_ws_connections):
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                pass
+        await notify_call_changed(call_id)
 
         # Also trigger the unified call handler session
         try:
@@ -641,20 +695,15 @@ async def bolna_transcript_update(request: Request):
 
         if call_id in _active_calls:
             _active_calls[call_id]["transcript"].append(turn)
-            msg = json.dumps({"type": "call_update", "data": _active_calls[call_id]})
         else:
-            msg = json.dumps({"type": "call_update", "data": {
+            _active_calls[call_id] = {
                 "call_id": call_id, "transcript": [turn], "status": "active",
                 "patient_phone": payload.get("phone_number", "unknown"),
                 "started_at": datetime.now().isoformat(), "duration": 0,
                 "quality": {"audio_quality": "unknown", "latency_ms": 0, "bandwidth_mbps": 0.0},
-            }})
+            }
 
-        for ws in list(active_ws_connections):
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                pass
+        await notify_call_changed(call_id)
 
         return {"received": True, "call_id": call_id}
     except Exception as e:
@@ -672,12 +721,7 @@ async def bolna_call_ended(request: Request):
         if call_id in _active_calls:
             _active_calls[call_id]["status"] = "ended"
 
-        msg = json.dumps({"type": "call_ended", "data": {"call_id": call_id}})
-        for ws in list(active_ws_connections):
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                pass
+        await broadcast_live_update("call_ended", {"call_id": call_id})
 
         # Archive call to postgres
         try:
@@ -687,6 +731,7 @@ async def bolna_call_ended(request: Request):
             print(f"[Bolna] end_call error: {e}")
 
         _active_calls.pop(call_id, None)
+        await notify_call_changed()
         return {"received": True, "call_id": call_id}
     except Exception as e:
         print(f"[Bolna call-ended] Error: {e}")
@@ -708,10 +753,14 @@ async def websocket_live_calls(websocket: WebSocket):
     print(f"[LiveCalls WS] Client connected. Total: {len(active_ws_connections)}")
 
     try:
-        # Send current active calls on connect
+        # Send current active calls & live stats on connect
         await websocket.send_text(json.dumps({
             "type": "active_calls",
             "data": list(_active_calls.values()),
+        }))
+        await websocket.send_text(json.dumps({
+            "type": "stats_update",
+            "data": get_live_stats_dict(),
         }))
 
         # Keep connection alive until client disconnects
@@ -764,6 +813,17 @@ async def websocket_call(websocket: WebSocket, call_id: str):
                 phone = msg.get("phone", "unknown")
                 session = handler.start_call(call_id, phone)
                 session_started = True
+                if call_id not in _active_calls:
+                    _active_calls[call_id] = {
+                        "call_id": call_id,
+                        "patient_phone": phone,
+                        "started_at": datetime.now().isoformat(),
+                        "duration": 0,
+                        "status": "active",
+                        "transcript": [],
+                        "quality": {"audio_quality": "good", "latency_ms": 20, "bandwidth_mbps": 1.5},
+                    }
+                    await notify_call_changed(call_id)
                 await websocket.send_text(json.dumps({
                     "type":       "session_started",
                     "call_id":    call_id,
@@ -776,11 +836,17 @@ async def websocket_call(websocket: WebSocket, call_id: str):
                     handler.start_call(call_id, phone)
                     session_started = True
 
+                patient_text = msg.get("text", "")
                 result = handler.process_turn(
                     call_id        = call_id,
-                    patient_input  = msg.get("text", ""),
+                    patient_input  = patient_text,
                     extracted_data = msg.get("extracted_data")
                 )
+                if call_id in _active_calls:
+                    _active_calls[call_id]["transcript"].append({"role": "patient", "text": patient_text, "timestamp": datetime.now().isoformat()})
+                    _active_calls[call_id]["transcript"].append({"role": "agent", "text": result.get("response", ""), "timestamp": datetime.now().isoformat()})
+                    await notify_call_changed(call_id)
+
                 await websocket.send_text(json.dumps({
                     "type":            "response",
                     "text":            result.get("response", ""),
@@ -795,6 +861,11 @@ async def websocket_call(websocket: WebSocket, call_id: str):
 
             elif msg_type == "end":
                 summary = handler.end_call(call_id)
+                if call_id in _active_calls:
+                    _active_calls[call_id]["status"] = "ended"
+                    await broadcast_live_update("call_ended", {"call_id": call_id})
+                    _active_calls.pop(call_id, None)
+                    await notify_call_changed()
                 await websocket.send_text(json.dumps({
                     "type":    "call_ended",
                     "summary": summary,
@@ -818,9 +889,16 @@ if frontend_path.exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_path / "assets")), name="assets")
 
     @app.get("/dashboard", tags=["System"])
-    async def dashboard():
-        """Serve the React frontend dashboard."""
+    @app.get("/calls", tags=["System"])
+    @app.get("/live-calls", tags=["System"])
+    @app.get("/bookings", tags=["System"])
+    @app.get("/patients", tags=["System"])
+    @app.get("/reports", tags=["System"])
+    @app.get("/settings", tags=["System"])
+    async def serve_spa():
+        """Serve the React frontend dashboard for all SPA routes."""
         return FileResponse(str(frontend_path / "index.html"))
+
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────

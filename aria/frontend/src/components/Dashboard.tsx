@@ -12,6 +12,7 @@ import gsap from 'gsap';
 import { analyticsAPI } from '../services/api';
 import { usePolling } from '../hooks/useApi';
 import { usePageEntrance, useCountUp } from '../hooks/useGsap';
+import { useStore } from '../store/useStore';
 import type { Analytics } from '../types';
 
 // ── Skeleton Loader ────────────────────────────────────────────────────────────
@@ -133,11 +134,15 @@ function AnimatedChartCard({ children }: { children: React.ReactNode }) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export function Dashboard() {
   const pageRef = usePageEntrance();
+  const { liveStats, activeCalls } = useStore();
 
-  const { data: stats, loading, error, refetch } = usePolling(
+  const { data: polledStats, loading, error, refetch } = usePolling(
     () => analyticsAPI.getStats(),
     60_000
   );
+
+  const stats = liveStats || polledStats;
+  const activeCount = stats?.active_calls ?? activeCalls.length;
 
   // Build chart data from stats
   const buildChartData = (s: Analytics) => {
@@ -164,22 +169,28 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Live Analytics</h1>
-          <p className="text-sm text-slate-500 dark:text-white/40 mt-1">
-            Auto-refreshes every 60 seconds
+          <p className="text-sm text-slate-500 dark:text-white/40 mt-1 flex items-center gap-2">
+            <span>Real-time updates via WebSocket</span>
+            {activeCount > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {activeCount} Live Call{activeCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </p>
         </div>
         <button
           onClick={refetch}
-          disabled={loading}
+          disabled={loading && !stats}
           className="btn-secondary"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={14} className={loading && !stats ? 'animate-spin' : ''} />
           <span>Refresh</span>
         </button>
       </div>
 
       {/* Error banner */}
-      {error && (
+      {error && !stats && (
         <div className="glass-card-flat border border-red-500/30 px-4 py-3 rounded-xl text-sm text-red-400 flex items-center gap-2">
           <Activity size={16} />
           <span>Backend unavailable — showing cached data. {error}</span>
@@ -188,7 +199,7 @@ export function Dashboard() {
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
+        {loading && !stats ? (
           <>
             <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
           </>
@@ -200,8 +211,8 @@ export function Dashboard() {
               isNumeric
               icon={Phone}
               gradient="linear-gradient(135deg, #2dd4bf, #0f766e)"
-              subtext={`${stats.active_calls ?? 0} active now`}
-              pulse={(stats.active_calls ?? 0) > 0}
+              subtext={`${activeCount} active now`}
+              pulse={activeCount > 0}
               index={0}
             />
             <StatCard
@@ -323,8 +334,8 @@ export function Dashboard() {
                 <div>
                   <p className="text-[10px] text-slate-500 dark:text-white/35 mb-0.5">Active Now</p>
                   <p className="text-base font-bold text-emerald-400 flex items-center gap-1">
-                    {stats.active_calls ?? 0}
-                    {(stats.active_calls ?? 0) > 0 && <Zap size={12} />}
+                    {activeCount}
+                    {activeCount > 0 && <Zap size={12} />}
                   </p>
                 </div>
               </div>

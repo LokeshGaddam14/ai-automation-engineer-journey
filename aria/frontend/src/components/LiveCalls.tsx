@@ -143,14 +143,14 @@ function CallCard({
 // ── LiveCalls Page ─────────────────────────────────────────────────────────────
 
 export function LiveCalls() {
-  const { showToast } = useStore();
-  const [calls, setCalls] = useState<LiveCall[]>([]);
+  const { showToast, activeCalls, wsConnected } = useStore();
+  const [mockCalls, setMockCalls] = useState<LiveCall[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [useMock, setUseMock] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
+  const calls = useMock ? mockCalls : activeCalls;
+  const wsStatus: 'connected' | 'connecting' | 'disconnected' = wsConnected ? 'connected' : 'disconnected';
   const selectedCall = calls.find((c) => c.call_id === selectedId) ?? null;
 
   // Auto-scroll transcript to bottom
@@ -160,66 +160,14 @@ export function LiveCalls() {
     }
   }, [selectedCall?.transcript.length]);
 
-  // Connect WebSocket to backend live-calls stream
-  const connectWS = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    setWsStatus('connecting');
-
-    const ws = new WebSocket(`${WS_BASE_URL}/ws/live-calls`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setWsStatus('connected');
-      showToast('Connected to live call stream', 'success');
-    };
-
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data) as { type: string; data: unknown };
-        if (msg.type === 'active_calls') {
-          setCalls(msg.data as LiveCall[]);
-        } else if (msg.type === 'call_update') {
-          const updated = msg.data as LiveCall;
-          setCalls((prev) =>
-            prev.some((c) => c.call_id === updated.call_id)
-              ? prev.map((c) => (c.call_id === updated.call_id ? updated : c))
-              : [updated, ...prev]
-          );
-        } else if (msg.type === 'call_ended') {
-          const ended = msg.data as { call_id: string };
-          setCalls((prev) =>
-            prev.map((c) => (c.call_id === ended.call_id ? { ...c, status: 'ended' as const } : c))
-          );
-        }
-      } catch {
-        // ignore parse errors
-      }
-    };
-
-    ws.onerror = () => {
-      setWsStatus('disconnected');
-    };
-
-    ws.onclose = () => {
-      setWsStatus('disconnected');
-    };
-  }, [showToast]);
-
   // Load mock data for demo
   const loadMockData = () => {
     const mocks = [makeMockCall(), { ...makeMockCall(), status: 'ringing' as const, duration: 5 }];
-    setCalls(mocks);
+    setMockCalls(mocks);
     setSelectedId(mocks[0].call_id);
     setUseMock(true);
     showToast('Loaded mock live call data', 'info');
   };
-
-  useEffect(() => {
-    connectWS();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connectWS]);
 
   const activeCount = calls.filter((c) => c.status === 'active' || c.status === 'ringing').length;
 
@@ -247,23 +195,27 @@ export function LiveCalls() {
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border ${
             wsStatus === 'connected'
               ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-              : wsStatus === 'connecting'
-              ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
               : 'text-slate-500 dark:text-white/30 bg-slate-900/5 dark:bg-white/5 border-slate-900/10 dark:border-white/10'
           }`}>
-            {wsStatus === 'connected' ? <Wifi size={12} /> : wsStatus === 'connecting' ? <Activity size={12} className="animate-pulse" /> : <WifiOff size={12} />}
+            {wsStatus === 'connected' ? <Wifi size={12} /> : <WifiOff size={12} />}
             {wsStatus}
           </div>
 
           {wsStatus === 'disconnected' && (
-            <button onClick={connectWS} className="btn-secondary">
+            <button onClick={() => window.location.reload()} className="btn-secondary">
               <RefreshCw size={14} /> Reconnect
             </button>
           )}
 
-          <button onClick={loadMockData} className="btn-secondary">
-            <Zap size={14} /> Demo Data
-          </button>
+          {useMock ? (
+            <button onClick={() => setUseMock(false)} className="btn-secondary border-emerald-500/40 text-emerald-400">
+              <Activity size={14} /> Exit Demo
+            </button>
+          ) : (
+            <button onClick={loadMockData} className="btn-secondary">
+              <Zap size={14} /> Demo Data
+            </button>
+          )}
         </div>
       </div>
 

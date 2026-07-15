@@ -8,6 +8,7 @@ import { Patients } from './components/Patients';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { useStore } from './store/useStore';
+import { useGlobalWebSocket } from './hooks/useGlobalWebSocket';
 
 function PageRenderer() {
   const { currentPage } = useStore();
@@ -25,6 +26,7 @@ function PageRenderer() {
 }
 
 export default function App() {
+  useGlobalWebSocket();
   return (
     <Layout>
       <PageRenderer />

@@ -67,8 +67,9 @@ SAMPLE_TURNS = [
 ]
 
 
-def seed():
-    pg = PostgresManager()
+def seed(pg=None):
+    if pg is None:
+        pg = PostgresManager()
 
     with Session(pg.engine) as db:
         existing = db.query(CallRecord).count()
