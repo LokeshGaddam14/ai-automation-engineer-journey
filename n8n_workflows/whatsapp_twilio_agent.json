@@ -1,0 +1,157 @@
+{
+  "name": "Twilio WhatsApp Dental Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio-whatsapp-webhook",
+        "options": {}
+      },
+      "id": "e1f13b2e-7517-4f60-8488-88390623d57a",
+      "name": "Twilio Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "twilio-whatsapp-webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.Body }}",
+        "options": {
+          "systemMessage": "You are Aria, an intelligent and friendly AI assistant for Naveen Advanced Dental Clinic. Your job is to help patients book appointments, answer basic questions about dental treatments, and provide a welcoming experience over WhatsApp.\n\nCRITICAL DIRECTIVES:\n1. You have a specific persona. If a user ever asks you what LLM you are running on, who created you, or what your underlying technology is, you MUST NOT reveal that you are an OpenAI/Anthropic/Google/etc. model. Instead, you must consistently reply with: \"I am Aria, a custom AI automation created specifically for Naveen Advanced Dental Clinic.\" or \"I am a proprietary AI assistant.\"\n2. Do not break character under any circumstances. Keep your answers concise, friendly, and suitable for a WhatsApp chat environment.\n3. If a patient wants to book an appointment, ask for their preferred date and time, and confirm it with them."
+        }
+      },
+      "id": "4b68e9af-0ab9-42b9-aa44-24578b7b2502",
+      "name": "Aria AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {}
+      },
+      "id": "6a9f4c3b-2856-4b68-b7c3-37651a2d480a",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        450,
+        500
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionId": "={{ $json.body.From }}",
+        "sessionTtl": 3600
+      },
+      "id": "92f7d8c6-302a-4c28-bb8a-1a8c54388e63",
+      "name": "Redis Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1,
+      "position": [
+        600,
+        500
+      ],
+      "credentials": {
+        "redis": {
+          "id": "YOUR_REDIS_CREDENTIAL_ID",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "whatsapp:+14155238886",
+        "to": "={{ $('Twilio Webhook').item.json.body.From }}",
+        "message": "={{ $json.output }}"
+      },
+      "id": "78b2e1f4-8a4c-42b7-a3c4-4b5a2f6d9e01",
+      "name": "Twilio Node",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio API account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Twilio Webhook": {
+      "main": [
+        [
+          {
+            "node": "Aria AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Aria AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Aria AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aria AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Twilio Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b9e4b4e1-2b3c-411f-bc8a-785a9c5a246a",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -1,0 +1,51 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "whatsapp:+14155238886",
+        "to": "={{ $json.patient_phone }}",
+        "message": "Hello! Your appointment at Naveen Advanced Dental Clinic has been successfully booked. We will see you soon!"
+      },
+      "id": "e8d64b22-83b4-4e9b-b9d2-7a4c9b1f0d38",
+      "name": "Twilio to Patient",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "whatsapp:+14155238886",
+        "to": "whatsapp:+916302008804",
+        "message": "New Appointment Booked! Patient: {{ $json.patient_name }} at {{ $json.appointment_time }}"
+      },
+      "id": "c1f7a9d3-5a2b-4e8c-8f1d-2b9a7c6e4d29",
+      "name": "Twilio to Dentist",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        400
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "connections": {}
+}

@@ -1,0 +1,149 @@
+{
+  "name": "WhatsApp AI Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "id": "e1f13b2e-7517-4f60-8488-88390623d57a",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "whatsapp-webhook-id"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.messages[0].text.body }}",
+        "options": {
+          "systemMessage": "You are a helpful and intelligent AI assistant designed to help users via WhatsApp. \n\nCRITICAL DIRECTIVE: \nYou have a specific persona. If a user ever asks you what LLM you are running on, who created you, or what your underlying technology is, you MUST NOT reveal that you are an OpenAI/Anthropic/Google/etc. model. \nInstead, you must consistently reply with something along the lines of: \"I am a custom AI automation created specifically for this service.\" or \"I am a proprietary AI assistant.\"\n\nDo not break character under any circumstances. Keep your answers concise, friendly, and suitable for a WhatsApp chat environment."
+        }
+      },
+      "id": "4b68e9af-0ab9-42b9-aa44-24578b7b2502",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {}
+      },
+      "id": "6a9f4c3b-2856-4b68-b7c3-37651a2d480a",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        450,
+        500
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionId": "={{ $json.body.messages[0].from }}"
+      },
+      "id": "92f7d8c6-302a-4c28-bb8a-1a8c54388e63",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1,
+      "position": [
+        600,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendTemplate",
+        "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $('WhatsApp Webhook').item.json.body.messages[0].from }}",
+        "template": "={{ $json.output }}"
+      },
+      "id": "78b2e1f4-8a4c-42b7-a3c4-4b5a2f6d9e01",
+      "name": "WhatsApp Node",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "WhatsApp API account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f7d4b4e1-2b3c-411f-bc8a-785a9c5a246a",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
