@@ -35,5 +35,4 @@ localtunnel_url.txt
 .idea/
 
 # ── Build output ────────────────────────────────────────────
-dist/
 *.db.bak
