@@ -130,14 +130,7 @@ class PostgresManager:
         except Exception:
             pass
 
-        # Auto-seed demo data if table is empty so dashboard has rich live data on startup
-        try:
-            with Session(self.engine) as db:
-                if db.query(CallRecord).count() == 0:
-                    from aria.seed_demo_data import seed
-                    seed(self)
-        except Exception as e:
-            print(f"[PostgresManager] Auto-seed error: {e}")
+        # NOTE: Auto-seeding intentionally disabled — dashboard shows ONLY real Bolna AI call data.
 
         db_type = "SQLite" if db_url.startswith("sqlite") else \
                   "Supabase" if "supabase" in db_url else "PostgreSQL"
@@ -326,22 +319,26 @@ class PostgresManager:
         """
         Analytics summary — for dashboard and reporting.
         Returns call counts, booking rates, language breakdown.
-        Field names are aliased to match the React dashboard frontend.
+        All data is sourced exclusively from real Bolna AI call executions.
         """
         with Session(self.engine) as db:
-            total_calls  = db.query(func.count(CallRecord.call_id)).scalar() or 0
-            confirmed    = db.query(func.count(CallRecord.call_id))\
-                            .filter(CallRecord.booking_status == "confirmed").scalar() or 0
-            avg_duration = db.query(func.avg(CallRecord.duration_secs)).scalar() or 0
-            total_duration = db.query(func.sum(CallRecord.duration_secs)).scalar() or 0
+            total_calls     = db.query(func.count(CallRecord.call_id)).scalar() or 0
+            completed_calls = db.query(func.count(CallRecord.call_id))\
+                               .filter(CallRecord.call_status == "completed").scalar() or 0
+            confirmed       = db.query(func.count(CallRecord.call_id))\
+                               .filter(CallRecord.booking_status == "confirmed").scalar() or 0
+            avg_duration    = db.query(func.avg(CallRecord.duration_secs)).scalar() or 0
+            total_duration  = db.query(func.sum(CallRecord.duration_secs)).scalar() or 0
             unique_patients = db.query(func.count(func.distinct(CallRecord.patient_phone))).scalar() or 0
 
+            # Language breakdown — filter out NULL/None
             lang_rows = (
                 db.query(CallRecord.language, func.count(CallRecord.call_id))
+                .filter(CallRecord.language != None)
                 .group_by(CallRecord.language)
                 .all()
             )
-            languages = {lang: count for lang, count in lang_rows}
+            languages = {lang: count for lang, count in lang_rows if lang}
 
             booking_rate = round(confirmed / total_calls, 3) if total_calls else 0
 
@@ -356,21 +353,31 @@ class PostgresManager:
             )
             treatments = [{"treatment": t, "count": c} for t, c in treatment_rows]
 
-            # Daily calls (last 7 days using naive string grouping for cross-db compatibility)
-            # A simple group_by on the date prefix
+            # Daily calls — grouped by date prefix
             daily_rows = (
                 db.query(func.substr(CallRecord.started_at, 1, 10).label('day'), func.count(CallRecord.call_id))
                 .group_by('day')
                 .order_by('day')
-                .limit(7)
                 .all()
             )
-            daily_calls = [{"date": d, "count": c} for d, c in daily_rows]
+            daily_calls = [{"date": d, "count": c} for d, c in daily_rows if d]
+
+            # Total AI cost from bolna_raw JSON
+            total_cost = 0.0
+            try:
+                raw_rows = db.execute(text("SELECT bolna_raw FROM call_records WHERE bolna_raw IS NOT NULL")).fetchall()
+                for (raw_str,) in raw_rows:
+                    try:
+                        total_cost += float(json.loads(raw_str or '{}').get('total_cost', 0) or 0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             return {
                 # Frontend-compatible names
                 "total_calls":            total_calls,
-                "completed_calls":        total_calls,
+                "completed_calls":        completed_calls,
                 "confirmed_bookings":     confirmed,
                 "avg_duration_seconds":   round(float(avg_duration), 1),
                 "total_duration_seconds": round(float(total_duration), 1),
@@ -379,6 +386,7 @@ class PostgresManager:
                 "languages":              languages,
                 "treatments":             treatments,
                 "by_date":                daily_calls,
+                "total_cost_usd":         round(total_cost, 2),
                 # Legacy names (keep for backwards compat)
                 "booking_rate_pct":       round(booking_rate * 100, 1),
                 "avg_duration_s":         round(float(avg_duration), 1),
