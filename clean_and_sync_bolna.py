@@ -1,6 +1,7 @@
 """
 CLEAN DB: Remove all fake/seed records, keep only real Bolna UUID records.
-Then re-sync from Bolna with proper language detection and booking status.
+Then re-sync from Bolna with proper language detection, booking status, and
+extracted_data mapping (patient name, date, time, etc)
 """
 import os, sys, json, sqlite3, requests
 from datetime import datetime
@@ -16,24 +17,15 @@ DB_PATH = str(Path(__file__).parent / "aria_calls.db")
 
 conn = sqlite3.connect(DB_PATH)
 
-# ── Step 1: Delete ALL fake/seed records (non-UUID call_ids) ─────────────────
 print("Step 1: Removing fake/seed records...")
 rows = conn.execute("SELECT call_id FROM call_records").fetchall()
-fake_ids = []
-for (call_id,) in rows:
-    is_uuid = len(call_id) == 36 and call_id.count('-') == 4
-    if not is_uuid:
-        fake_ids.append(call_id)
-
+fake_ids = [r[0] for r in rows if len(r[0]) != 36 or r[0].count('-') != 4]
 if fake_ids:
     placeholders = ','.join('?' * len(fake_ids))
     conn.execute(f"DELETE FROM call_records WHERE call_id IN ({placeholders})", fake_ids)
     conn.commit()
-    print(f"  Deleted {len(fake_ids)} fake records: {fake_ids}")
-else:
-    print("  No fake records found.")
+    print(f"  Deleted {len(fake_ids)} fake records.")
 
-# ── Step 2: Fetch fresh data from Bolna API ──────────────────────────────────
 print("\nStep 2: Fetching real calls from Bolna API...")
 headers_bolna = {"Authorization": f"Bearer {BOLNA_API_KEY}"}
 
@@ -44,77 +36,54 @@ resp = requests.get(
     timeout=20,
 )
 resp.raise_for_status()
-executions = resp.json()
-if not isinstance(executions, list):
-    executions = executions.get("data", [])
+executions = resp.json().get("data", []) if isinstance(resp.json(), dict) else resp.json()
 
 print(f"  Fetched {len(executions)} real executions from Bolna.")
 
-# ── Step 3: Detect language from transcript ──────────────────────────────────
 def detect_language(transcript: str) -> str:
-    if not transcript:
-        return "English"
-    # Telugu Unicode block: 0C00–0C7F
+    if not transcript: return "English"
     telugu_chars = sum(1 for c in transcript if '\u0C00' <= c <= '\u0C7F')
-    # Hindi/Devanagari: 0900–097F
     hindi_chars = sum(1 for c in transcript if '\u0900' <= c <= '\u097F')
-    # Tamil: 0B80–0BFF
-    tamil_chars = sum(1 for c in transcript if '\u0B80' <= c <= '\u0BFF')
     total = len(transcript)
-    if total == 0:
-        return "English"
-    if telugu_chars / total > 0.05:
-        return "Telugu"
-    if hindi_chars / total > 0.05:
-        return "Hindi"
-    if tamil_chars / total > 0.05:
-        return "Tamil"
+    if total == 0: return "English"
+    if telugu_chars / total > 0.05: return "Telugu"
+    if hindi_chars / total > 0.05: return "Hindi"
     return "English"
 
-# ── Step 4: Detect booking from transcript ───────────────────────────────────
-def detect_booking(transcript: str, status: str, duration: float) -> str:
-    if status == 'busy' or not transcript:
-        return "no_booking"
-    if duration and duration < 5:
-        return "no_booking"
-    t_lower = transcript.lower()
-    # Booking keywords in English, Telugu, Hindi
-    booked_keywords = [
-        "appointment",  "booked", "confirmed", "scheduled", "book",
-        "అపాయింట్మెంట్", "బుక్", "నిర్ధారించబడింది",
-        "अपॉइंटमेंट", "बुक",
+def detect_booking_accurate(transcript: str, status: str, duration: float, cost: float) -> str:
+    if status == 'busy' or not transcript: return "no_booking"
+    lines = [l.strip() for l in transcript.split('\n') if l.strip()]
+    user_lines   = [l for l in lines if l.startswith('user:')]
+    agent_lines  = [l for l in lines if l.startswith('assistant:')]
+    if not user_lines: return "no_booking"
+    full_agent_text = ' '.join(agent_lines).lower()
+    
+    confirmed_phrases = [
+        "కన్ఫర్మ్ అయింది", "బుక్ చేసుకున్నాను", "అపాయింట్‌మెంట్ బుక్", 
+        "అపాయింట్మెంట్ కోసం ధన్యవాదాలు", "నిర్ధారించబడింది",
+        "appointment confirmed", "appointment booked", "successfully booked",
     ]
-    if any(kw in transcript for kw in booked_keywords):
-        return "confirmed"
+    if any(p in full_agent_text for p in confirmed_phrases): return "confirmed"
+    if duration >= 60 and cost > 5.0 and len(user_lines) >= 3: return "confirmed"
     return "no_booking"
 
-# ── Step 5: Parse transcript into turns ──────────────────────────────────────
-def parse_turns(transcript: str, started: str) -> list:
-    turns = []
-    for line in transcript.split("\n"):
-        line = line.strip()
-        if line.startswith("assistant:"):
-            turns.append({"role": "agent",   "content": line[10:].strip(), "timestamp": started})
-        elif line.startswith("user:"):
-            turns.append({"role": "patient", "content": line[5:].strip(),  "timestamp": started})
-    return turns
+# Extract deeply nested Bolna extracted_data values
+def get_extracted_val(ex_data: dict, key: str) -> str:
+    if not ex_data: return ""
+    v = ex_data.get(key)
+    if isinstance(v, dict):
+        # some structure is {"patient_name": {"patient_name": {"subjective": "Lokesh"}}}
+        inner = v.get(key, v)
+        if isinstance(inner, dict):
+            return inner.get("subjective", "")
+    return ""
 
-# ── Step 6: Add bolna_raw column if needed ──────────────────────────────────
-try:
-    conn.execute("ALTER TABLE call_records ADD COLUMN bolna_raw TEXT DEFAULT '{}'")
-    conn.commit()
-except Exception:
-    pass
-
-# ── Step 7: Upsert all real Bolna calls ─────────────────────────────────────
 print("\nStep 3: Syncing real Bolna calls to database...")
-inserted = 0
-updated  = 0
+inserted, updated = 0, 0
 
 for c in executions:
     call_id = c.get("id", "")
-    if not call_id:
-        continue
+    if not call_id: continue
 
     phone     = c.get("to_number") or c.get("recipient_phone_number") or "N/A"
     status    = c.get("call_status") or c.get("status") or "completed"
@@ -126,65 +95,71 @@ for c in executions:
 
     transcript_raw = c.get("transcript", "") or ""
     language       = detect_language(transcript_raw)
-    booking_status = detect_booking(transcript_raw, status, duration)
-    turns          = parse_turns(transcript_raw, started)
+    booking_status = detect_booking_accurate(transcript_raw, status, duration, cost)
+    
+    turns = []
+    for line in transcript_raw.split("\n"):
+        line = line.strip()
+        if line.startswith("assistant:"):
+            turns.append({"role": "agent", "content": line[10:].strip(), "timestamp": started})
+        elif line.startswith("user:"):
+            turns.append({"role": "patient", "content": line[5:].strip(), "timestamp": started})
+
+    # Extract real data!
+    ex = c.get("extracted_data") or {}
+    patient_name = get_extracted_val(ex, "patient_name")
+    patient_email = get_extracted_val(ex, "email")
+    appt_date = get_extracted_val(ex, "appointment_date")
+    appt_time = get_extracted_val(ex, "appointment_time")
+    treatment = get_extracted_val(ex, "treatment")
+    if "did not specify" in treatment.lower() or "unknown" in treatment.lower():
+        treatment = ""
+        
+    summary = get_extracted_val(ex, "General") or ""
+
+    extracted_data_json = {
+        "cost": cost, 
+        "language": language, 
+        "booking_status": booking_status,
+        "patientName": patient_name,
+        "appointmentDate": appt_date,
+        "appointmentTime": appt_time,
+        "treatment": treatment,
+        "email": patient_email,
+        "summary": summary
+    }
 
     existing = conn.execute("SELECT call_id FROM call_records WHERE call_id=?", (call_id,)).fetchone()
 
     row_data = (
-        phone, started, ended, int(duration),
-        language, agent_id, status,
-        "", "", "", "", "", "",
-        booking_status,
-        json.dumps({"cost": cost, "language": language, "booking_status": booking_status}, ensure_ascii=False),
+        phone, started, ended, int(duration), language, agent_id, status,
+        patient_name, patient_email, "", appt_date, appt_time, treatment, booking_status,
+        json.dumps(extracted_data_json, ensure_ascii=False),
         json.dumps(turns, ensure_ascii=False),
-        "",  # summary
+        summary,
         json.dumps(c, ensure_ascii=False),
     )
 
     if existing:
         conn.execute("""
             UPDATE call_records SET
-                patient_phone=?, started_at=?, ended_at=?, duration_secs=?,
-                language=?, agent_id=?, call_status=?,
-                patient_name=?, patient_email=?, booking_id=?,
-                appointment_date=?, appointment_time=?, treatment=?,
-                booking_status=?, extracted_data=?, turns=?, summary=?, bolna_raw=?
+                patient_phone=?, started_at=?, ended_at=?, duration_secs=?, language=?, agent_id=?, call_status=?,
+                patient_name=?, patient_email=?, booking_id=?, appointment_date=?, appointment_time=?, treatment=?, booking_status=?,
+                extracted_data=?, turns=?, summary=?, bolna_raw=?
             WHERE call_id=?
         """, (*row_data, call_id))
         updated += 1
     else:
         conn.execute("""
             INSERT INTO call_records
-                (call_id, patient_phone, started_at, ended_at, duration_secs,
-                 language, agent_id, call_status,
-                 patient_name, patient_email, booking_id,
-                 appointment_date, appointment_time, treatment,
-                 booking_status, extracted_data, turns, summary, bolna_raw)
+                (call_id, patient_phone, started_at, ended_at, duration_secs, language, agent_id, call_status,
+                 patient_name, patient_email, booking_id, appointment_date, appointment_time, treatment, booking_status,
+                 extracted_data, turns, summary, bolna_raw)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (call_id, *row_data))
         inserted += 1
 
 conn.commit()
-
-# ── Step 8: Final summary ────────────────────────────────────────────────────
-total_calls     = conn.execute("SELECT count(*) FROM call_records").fetchone()[0]
-total_bookings  = conn.execute("SELECT count(*) FROM call_records WHERE booking_status='confirmed'").fetchone()[0]
-total_completed = conn.execute("SELECT count(*) FROM call_records WHERE call_status='completed'").fetchone()[0]
-lang_counts     = conn.execute("SELECT language, count(*) FROM call_records GROUP BY language").fetchall()
-total_duration  = conn.execute("SELECT sum(duration_secs) FROM call_records").fetchone()[0] or 0
 conn.close()
 
-print(f"\n{'='*50}")
-print(f"DATABASE CLEANED & SYNCED — REAL DATA ONLY")
-print(f"{'='*50}")
-print(f"  Fake records deleted : {len(fake_ids)}")
-print(f"  Inserted             : {inserted}")
-print(f"  Updated              : {updated}")
-print(f"  Total calls          : {total_calls}")
-print(f"  Completed calls      : {total_completed}")
-print(f"  Confirmed bookings   : {total_bookings}")
-print(f"  Total talk time      : {total_duration}s ({round(total_duration/60, 1)} min)")
-print(f"  Languages            : {dict(lang_counts)}")
-print(f"{'='*50}")
-print("\nDone! Database now contains ONLY real Bolna AI call data.")
+print(f"\n✅ Synced successfully. {updated} updated, {inserted} inserted.")

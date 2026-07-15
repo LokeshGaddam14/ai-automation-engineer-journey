@@ -639,6 +639,27 @@ async def sync_bolna_calls(background_tasks: BackgroundTasks):
 
         booking_status = "confirmed" if status == "completed" and len(turns) > 2 else "no_booking"
 
+        # Deep extract helper
+        def get_extracted_val(ex_data: dict, key: str) -> str:
+            if not ex_data: return ""
+            v = ex_data.get(key)
+            if isinstance(v, dict):
+                inner = v.get(key, v)
+                if isinstance(inner, dict):
+                    return inner.get("subjective", "")
+            return ""
+
+        ex = c.get("extracted_data") or {}
+        patient_name = get_extracted_val(ex, "patient_name")
+        patient_email = get_extracted_val(ex, "email")
+        appt_date = get_extracted_val(ex, "appointment_date")
+        appt_time = get_extracted_val(ex, "appointment_time")
+        treatment = get_extracted_val(ex, "treatment")
+        if "did not specify" in treatment.lower() or "unknown" in treatment.lower():
+            treatment = ""
+            
+        summary = get_extracted_val(ex, "General") or ""
+
         session_dict = {
             "call_id":       call_id,
             "patient_phone": phone,
@@ -647,7 +668,16 @@ async def sync_bolna_calls(background_tasks: BackgroundTasks):
             "callStatus":    status,
             "agentId":       agent_id,
             "turns":         turns,
-            "extracted_data": {"booking_status": booking_status, "duration": duration},
+            "extracted_data": {
+                "booking_status": booking_status, 
+                "duration": duration,
+                "patientName": patient_name,
+                "email": patient_email,
+                "appointmentDate": appt_date,
+                "appointmentTime": appt_time,
+                "treatment": treatment,
+                "summary": summary
+            },
         }
 
         try:
