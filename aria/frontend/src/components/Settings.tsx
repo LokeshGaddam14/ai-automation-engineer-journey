@@ -71,9 +71,6 @@ function ApiHealthWidget() {
           <InfoRow label="Service"   value={health.service} />
           <InfoRow label="Version"   value={health.version} />
           <InfoRow label="Timestamp" value={new Date(health.timestamp).toLocaleString()} />
-          {Object.entries(health.components).map(([key, val]) => (
-            <InfoRow key={key} label={key.charAt(0).toUpperCase() + key.slice(1)} value={val} mono />
-          ))}
         </div>
       )}
 
@@ -218,19 +215,6 @@ export function Settings() {
               checked={notifications.callAlerts}
               onChange={(v) => setNotifications((s) => ({ ...s, callAlerts: v }))}
             />
-          </div>
-        </SettingSection>
-
-        {/* Stack Info */}
-        <SettingSection title="Tech Stack" icon={Wifi}>
-          <div className="space-y-0">
-            <InfoRow label="AI Agent"  value="LangGraph + OpenAI GPT-4o" />
-            <InfoRow label="Voice"     value="Bolna AI" />
-            <InfoRow label="Memory"    value="Redis (session) + PostgreSQL" />
-            <InfoRow label="Phone"     value="Twilio" />
-            <InfoRow label="Calendar"  value="Google Calendar API" />
-            <InfoRow label="Frontend"  value="React + TypeScript + Vite" />
-            <InfoRow label="Backend"   value="FastAPI + Uvicorn" />
           </div>
         </SettingSection>
 
