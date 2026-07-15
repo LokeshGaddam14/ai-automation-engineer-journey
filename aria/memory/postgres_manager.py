@@ -340,7 +340,10 @@ class PostgresManager:
             )
             languages = {lang: count for lang, count in lang_rows if lang}
 
-            booking_rate = round(confirmed / total_calls, 3) if total_calls else 0
+            # Calculate booking rate based ONLY on actual conversations (duration > 10s)
+            valid_calls = db.query(func.count(CallRecord.call_id))\
+                            .filter(CallRecord.duration_secs > 10).scalar() or 0
+            booking_rate = round(confirmed / valid_calls, 3) if valid_calls else 0
 
             # Treatment mix
             treatment_rows = (
